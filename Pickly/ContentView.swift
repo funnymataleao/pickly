@@ -1,21 +1,36 @@
-//
-//  ContentView.swift
-//  Pickly
-//
-//  Created by mataleao on 27/04/2026.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var savedStore = SavedProductsStore()
+
+    private let productService = MockProductService()
+    private let preferences = UserPreferences.prototype
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        TabView {
+            NavigationStack {
+                SearchView(
+                    productService: productService,
+                    savedStore: savedStore,
+                    preferences: preferences
+                )
+            }
+            .tabItem {
+                Label("Search", systemImage: "magnifyingglass")
+            }
+
+            NavigationStack {
+                SavedView(
+                    productService: productService,
+                    savedStore: savedStore,
+                    preferences: preferences
+                )
+            }
+            .tabItem {
+                Label("Saved", systemImage: "bookmark")
+            }
         }
-        .padding()
+        .tint(.green)
     }
 }
 
