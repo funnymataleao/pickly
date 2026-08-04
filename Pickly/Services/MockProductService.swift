@@ -1,6 +1,6 @@
 import Foundation
 
-struct MockProductService {
+struct MockProductService: ProductService {
     let products: [Product] = [
         Product(
             id: "greek-yogurt",
@@ -9,16 +9,20 @@ struct MockProductService {
             brand: "Field & Spoon",
             category: "Dairy",
             imageName: "cup.and.saucer.fill",
+            imageURL: nil,
             ingredients: ["Cultured milk", "Live active cultures"],
+            nutrition: Product.Nutrition(sugars100g: 4, addedSugars100g: 0, salt100g: 0.18, saturatedFat100g: 0.2, proteins100g: 16, fiber100g: 0),
             nutritionSummary: "0g added sugar, 70mg sodium, 16g protein",
             score: 92,
             summary: "A simple option with high protein and no added sugar.",
-            reasons: ["No added sugar", "Short ingredient list", "Higher protein than many similar options"],
+            reasons: ["No added sugar", "Short ingredient list", "Provides 16g protein per 100g"],
             warnings: ["Contains dairy"],
             positives: ["High protein", "Short ingredient list"],
             forYouNotes: ["Better option if you're limiting sugar"],
             alternativeIDs: [],
-            confidence: "High"
+            confidence: "High",
+            dietary: DietaryAttributes(vegetarian: .confirmed, glutenFree: .confirmed, lactoseFree: .notSuitable),
+            source: .mock
         ),
         Product(
             id: "honey-crunch-cereal",
@@ -27,16 +31,19 @@ struct MockProductService {
             brand: "Morning Basket",
             category: "Breakfast",
             imageName: "takeoutbag.and.cup.and.straw.fill",
+            imageURL: nil,
             ingredients: ["Whole grain oats", "Sugar", "Honey", "Rice flour", "Canola oil", "Salt", "Natural flavor"],
+            nutrition: Product.Nutrition(sugars100g: 18, addedSugars100g: 11, salt100g: 0.4, saturatedFat100g: 1.2, proteins100g: 6, fiber100g: 3),
             nutritionSummary: "11g added sugar, 160mg sodium, 3g fiber",
             score: 58,
-            summary: "Better as an occasional option because it has more added sugar than similar cereals.",
+            summary: "Better as an occasional option because it has 11g added sugar per 100g.",
             reasons: ["Contains whole grain oats", "Has some fiber"],
-            warnings: ["Contains more added sugar than similar products", "Ingredient list is longer than simpler cereals"],
+            warnings: ["Contains more added sugar than ideal for everyday use", "Ingredient list has more than 7 items"],
             positives: ["Whole grain first ingredient"],
             forYouNotes: ["May not be the best choice if you're reducing sugar"],
             alternativeIDs: ["simple-oat-cereal", "protein-granola"],
-            confidence: "Medium"
+            confidence: "Medium",
+            source: .mock
         ),
         Product(
             id: "simple-oat-cereal",
@@ -45,7 +52,9 @@ struct MockProductService {
             brand: "Grain House",
             category: "Breakfast",
             imageName: "leaf.fill",
+            imageURL: nil,
             ingredients: ["Whole grain oats", "Sea salt"],
+            nutrition: Product.Nutrition(sugars100g: 1, addedSugars100g: 1, salt100g: 0.22, saturatedFat100g: 0.4, proteins100g: 5, fiber100g: 5),
             nutritionSummary: "1g added sugar, 90mg sodium, 5g fiber",
             score: 88,
             summary: "A calmer breakfast choice with very little added sugar and a short ingredient list.",
@@ -54,7 +63,9 @@ struct MockProductService {
             positives: ["Less added sugar", "Shorter ingredient list"],
             forYouNotes: ["Better option if you're limiting sugar"],
             alternativeIDs: ["protein-granola"],
-            confidence: "High"
+            confidence: "High",
+            dietary: DietaryAttributes(vegetarian: .confirmed, vegan: .confirmed, glutenFree: .confirmed, lactoseFree: .confirmed),
+            source: .mock
         ),
         Product(
             id: "protein-granola",
@@ -63,7 +74,9 @@ struct MockProductService {
             brand: "Trail Table",
             category: "Breakfast",
             imageName: "bolt.heart.fill",
+            imageURL: nil,
             ingredients: ["Oats", "Almonds", "Pea protein", "Chicory fiber", "Maple syrup", "Sea salt"],
+            nutrition: Product.Nutrition(sugars100g: 7, addedSugars100g: 4, salt100g: 0.19, saturatedFat100g: 1.8, proteins100g: 10, fiber100g: 6),
             nutritionSummary: "4g added sugar, 75mg sodium, 10g protein",
             score: 79,
             summary: "A balanced choice with more protein and moderate added sugar.",
@@ -72,7 +85,8 @@ struct MockProductService {
             positives: ["Higher protein", "Lower sodium"],
             forYouNotes: ["A reasonable option if you want a more filling breakfast"],
             alternativeIDs: ["simple-oat-cereal"],
-            confidence: "Medium"
+            confidence: "Medium",
+            source: .mock
         ),
         Product(
             id: "tomato-basil-soup",
@@ -81,16 +95,19 @@ struct MockProductService {
             brand: "Pantry Lane",
             category: "Soup",
             imageName: "fork.knife.circle.fill",
+            imageURL: nil,
             ingredients: ["Tomatoes", "Water", "Cream", "Onion", "Basil", "Salt", "Sugar", "Garlic"],
+            nutrition: Product.Nutrition(sugars100g: 5, addedSugars100g: 3, salt100g: 1.7, saturatedFat100g: 3, proteins100g: 2, fiber100g: 1),
             nutritionSummary: "3g added sugar, 680mg sodium, 3g saturated fat",
             score: 63,
-            summary: "A convenient soup, though sodium is higher than many everyday options.",
+            summary: "A convenient soup, though its salt level is high for everyday use.",
             reasons: ["Recognizable ingredient list", "Tomatoes are the first ingredient"],
-            warnings: ["Higher sodium than many similar soups", "Contains cream"],
+            warnings: ["Salt level is high for everyday use", "Contains cream"],
             positives: ["Vegetable-forward ingredient list"],
             forYouNotes: ["You might prefer a lower sodium option below"],
             alternativeIDs: ["low-sodium-lentil-soup"],
-            confidence: "Medium"
+            confidence: "Medium",
+            source: .mock
         ),
         Product(
             id: "low-sodium-lentil-soup",
@@ -99,7 +116,9 @@ struct MockProductService {
             brand: "Pantry Lane",
             category: "Soup",
             imageName: "carrot.fill",
+            imageURL: nil,
             ingredients: ["Water", "Lentils", "Tomatoes", "Carrots", "Celery", "Onion", "Olive oil", "Spices"],
+            nutrition: Product.Nutrition(sugars100g: 2, addedSugars100g: 0, salt100g: 0.8, saturatedFat100g: 0.4, proteins100g: 8, fiber100g: 5),
             nutritionSummary: "0g added sugar, 320mg sodium, 8g protein",
             score: 84,
             summary: "A more balanced soup with lower sodium and plant-based protein.",
@@ -108,28 +127,11 @@ struct MockProductService {
             positives: ["Lower sodium", "Higher protein"],
             forYouNotes: ["May be a better fit if you want a lighter everyday soup"],
             alternativeIDs: [],
-            confidence: "High"
+            confidence: "High",
+            dietary: DietaryAttributes(vegetarian: .confirmed, vegan: .confirmed, glutenFree: .confirmed, lactoseFree: .confirmed),
+            source: .mock
         )
     ]
-
-    func searchProducts(matching query: String) -> [Product] {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !trimmedQuery.isEmpty else {
-            return products
-        }
-
-        return products.filter { product in
-            product.name.localizedCaseInsensitiveContains(trimmedQuery)
-                || product.brand.localizedCaseInsensitiveContains(trimmedQuery)
-                || product.category.localizedCaseInsensitiveContains(trimmedQuery)
-                || product.barcode.contains(trimmedQuery)
-        }
-    }
-
-    func product(id: String) -> Product? {
-        products.first { $0.id == id }
-    }
 
     func alternatives(for product: Product) -> [Product] {
         product.alternativeIDs.compactMap(product(id:))

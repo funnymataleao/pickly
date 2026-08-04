@@ -1,6 +1,6 @@
 import Foundation
 
-struct SavedProduct: Identifiable, Hashable {
+struct SavedProduct: Identifiable, Hashable, Codable {
     let productId: String
     let date: Date
 
