@@ -1,0 +1,10 @@
+# Xcode and local build output
+build/
+DerivedData/
+graphify-out/
+*.xcuserstate
+xcuserdata/
+
+# Local Supabase configuration must stay outside source control
+Docs/Supabase.local.xcconfig
+Config/Local.xcconfig

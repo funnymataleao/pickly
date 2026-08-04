@@ -1,6 +1,6 @@
 import Foundation
 
-struct UserPreferences: Hashable {
+struct UserPreferences: Hashable, Codable {
     var sensitiveDigestion: Bool
     var lowSugar: Bool
     var lowSodium: Bool
@@ -10,8 +10,8 @@ struct UserPreferences: Hashable {
     var lactoseFree: Bool
 
     static let prototype = UserPreferences(
-        sensitiveDigestion: true,
-        lowSugar: true,
+        sensitiveDigestion: false,
+        lowSugar: false,
         lowSodium: false,
         vegetarian: false,
         vegan: false,
