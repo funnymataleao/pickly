@@ -11,6 +11,7 @@ struct PrivacyPolicyView: View {
                     Text("Search queries and barcodes may be sent to Supabase and Open Food Facts to look up product information. Those services receive the request metadata needed to provide a response.")
                     Text("If you are signed in and request a missing product, the barcode, product name, brand, and optional note you submit are stored in Supabase with your user ID so the request can be reviewed.")
                     Text("If you create an account, Pickly processes your email address, user ID, and any name supplied by Apple or Google for sign-in. Supabase stores the account record, while Pickly keeps the local session in the system Keychain. For Sign in with Apple, a one-time authorization code is sent to Pickly's server only to exchange it for a provider refresh token; that token is stored server-side so the Apple connection can be revoked when you delete your account.")
+                    Text("When you choose Google Sign-In, Google's SDK may process account and service data described by its bundled privacy manifest, including name, email address, user ID, phone number when present on the selected Google account, coarse location, device identifiers, and other service usage data. Google declares these uses for sign-in functionality and limited SDK analytics, not advertising tracking. Pickly does not request location permission or use this data for advertising.")
                     Text("If you use Pickly Plus, Apple processes the purchase. Pickly receives verified subscription status, not your payment details.")
                 }
 
@@ -33,7 +34,7 @@ struct PrivacyPolicyView: View {
                 }
 
                 Section("Support") {
-                    Link("Pickly support page", destination: URL(string: "https://github.com/funnymataleao/pickly")!)
+                    Link("Pickly support page", destination: URL(string: "https://funnymataleao.github.io/pickly/support.html")!)
                 }
 
                 Section {

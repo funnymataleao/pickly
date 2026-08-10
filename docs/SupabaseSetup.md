@@ -364,7 +364,7 @@ The app requests name and email only when the user starts Apple sign-in. It send
    - Enable Google.
    - Add the Web client ID first and the iOS client ID second under Client IDs.
    - Keep nonce verification enabled. Pickly uses Google Sign-In's nonce API and passes the matching original nonce to Supabase.
-4. Copy `Docs/Supabase.local.xcconfig.example` values into the ignored `Config/Local.xcconfig`:
+4. Copy `docs/Supabase.local.xcconfig.example` values into the ignored `Config/Local.xcconfig`:
    - `GOOGLE_IOS_CLIENT_ID`
    - `GOOGLE_SERVER_CLIENT_ID` (the Web client ID)
    - `GOOGLE_REVERSED_CLIENT_ID` (the reversed iOS client ID used as the callback URL scheme)
