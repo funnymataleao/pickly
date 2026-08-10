@@ -337,7 +337,7 @@ supabase secrets set \
 
 Use `APPLE_CLIENT_SECRET` instead of the team/key/private-key trio only when you have a managed rotation process for that JWT; generated client secrets expire and must be rotated before deletion is needed.
 
-The deployed project was verified through the Auth settings endpoint, the public `products` REST endpoint (30 products and 17 alternative relations), and unauthenticated requests to both deletion/token functions (which correctly return `401`). Security advisors report the intentional no-policy state for the service-role-only token table. Leaked Password Protection is requested in `config.toml`; hosted Free projects may reject this setting because HaveIBeenPwned-backed protection is a Pro feature. Performance advisors report informational `unused_index` notices for indexes that have not yet been exercised by production traffic.
+The deployed project was verified through the Auth settings endpoint, the public `products` REST endpoint (30 products and 17 alternative relations), and unauthenticated requests to both deletion/token functions (which correctly return `401`). Security advisors report the intentional no-policy state for the service-role-only token table. Leaked Password Protection was attempted through the Management API but the hosted Free plan rejected it with HTTP 402; enable it in the Supabase Dashboard after upgrading to Pro. Performance advisors report informational `unused_index` notices for indexes that have not yet been exercised by production traffic.
 
 ## 8. Native Apple and Google sign-in
 
