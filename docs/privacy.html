@@ -74,26 +74,28 @@
 <body>
     <div class="container">
         <h1>Privacy Policy</h1>
-        <p class="last-updated">Last updated: August 9, 2026</p>
+        <p class="last-updated">Last updated: August 10, 2026</p>
         
         <div class="section">
             <h2>What Pickly Uses</h2>
-            <p>Pickly uses the camera only after you start barcode scanning. Camera frames are processed for barcode recognition and are not stored by the MVP.</p>
+            <p>Pickly uses the camera only after you start barcode scanning. Camera frames are processed for barcode recognition and are not stored by Pickly.</p>
             <p>Search queries and barcodes may be sent to Supabase and Open Food Facts to look up product information. Those services receive the request metadata needed to provide a response.</p>
+            <p>If you are signed in and request a missing product, the barcode, product name, brand, and optional note you submit are stored in Supabase with your user ID so the request can be reviewed.</p>
             <p>If you create an account, Pickly processes your email address, user ID, and any name supplied by Apple or Google for sign-in. Supabase stores the account record, while Pickly keeps the local session in the system Keychain. For Sign in with Apple, a one-time authorization code is sent to Pickly's server only to exchange it for a provider refresh token; that token is stored server-side so the Apple connection can be revoked when you delete your account.</p>
             <p>If you use Pickly Plus, Apple processes the purchase. Pickly receives verified subscription status, not your payment details.</p>
         </div>
         
         <div class="section">
             <h2>Your Choices</h2>
-            <p>Camera access is optional. You can search the sample catalog or enter a barcode manually instead.</p>
+            <p>Camera access is optional. You can search the product catalog or enter a barcode manually instead.</p>
             <p>You can delete your Pickly account from the Account screen. Deleting the account also clears local saved products and preferences.</p>
         </div>
         
         <div class="section">
             <h2>Data Retention</h2>
             <p>Local saved products, history, and preferences remain on this device until you remove them, delete the app, or delete your account from Pickly.</p>
-            <p>Supabase account data remains while your account is active. Deleting your account requests removal of the server-side account, revokes the stored Apple connection when applicable, and clears local Pickly data. Apple or Google subscription billing is separate and must be managed through the provider.</p>
+            <p>Submitted product requests remain in Supabase while your account is active and are removed with the account.</p>
+            <p>Supabase account data remains while your account is active. Deleting your account requests removal of the server-side account, revokes the stored sign-in connection when applicable, and clears local Pickly data. App Store subscription billing is separate and must be managed through Apple.</p>
             <p>Pickly does not sell personal information or use it for advertising tracking. Camera access is optional, and no contacts are requested.</p>
         </div>
         
@@ -103,6 +105,7 @@
             <ul style="margin-left: 20px; margin-bottom: 1em; color: #515154;">
                 <li><strong>Email Address:</strong> Used for account creation and sign-in (optional)</li>
                 <li><strong>Product Searches and Barcodes:</strong> Sent to Supabase and Open Food Facts for product lookup</li>
+                <li><strong>Product Requests:</strong> Product details and optional notes are linked to your account when you submit a missing-product request</li>
                 <li><strong>Saved Products:</strong> Stored locally on your device</li>
                 <li><strong>Preferences:</strong> Stored locally on your device</li>
                 <li><strong>Subscription Status:</strong> Verified locally through StoreKit; payment details remain with Apple</li>
@@ -140,7 +143,7 @@
         
         <div class="section">
             <h2>Contact</h2>
-            <p>If you have questions about this Privacy Policy, please contact us through the app's support section or via the Pickly GitHub repository.</p>
+            <p>If you have questions about this Privacy Policy, visit the <a href="https://github.com/funnymataleao/pickly">Pickly support page</a>.</p>
         </div>
     </div>
 </body>

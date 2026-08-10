@@ -120,7 +120,7 @@ extension BarcodeScannerView {
                 captureSession.addOutput(metadataOutput)
                 metadataOutput.setMetadataObjectsDelegate(self, queue: .main)
 
-                let supportedTypes: [AVMetadataObject.ObjectType] = [.ean13, .ean8, .upce]
+                let supportedTypes: [AVMetadataObject.ObjectType] = [.ean13, .ean8, .upce, .itf14]
                 metadataOutput.metadataObjectTypes = supportedTypes.filter {
                     metadataOutput.availableMetadataObjectTypes.contains($0)
                 }

@@ -3,13 +3,22 @@ import SwiftUI
 struct SearchView: View {
     @ObservedObject var catalog: ProductCatalogStore
     @ObservedObject var savedStore: SavedProductsStore
+    @ObservedObject var authStore: AuthStore
     let preferences: UserPreferences
     var onOpenPreferences: (() -> Void)? = nil
+    var onScanAnotherProduct: (() -> Void)? = nil
 
     @State private var query = ""
     @State private var selectedGoal: GroceryGoal = .all
-    @State private var showProductRequest = false
     @State private var selectedProduct: Product?
+    @State private var showAllGoalMatches = false
+    @State private var showFullHistory = false
+    @State private var showPaywall = false
+    @State private var showProductRequest = false
+
+    private let homeGoalPreviewLimit = 4
+    private let homeGoalCarouselLimit = 30
+    private let homeRecentPreviewLimit = 3
 
     private var products: [Product] {
         catalog.searchProducts(matching: query)
@@ -19,12 +28,8 @@ struct SearchView: View {
         !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var recentProducts: [Product] {
-        savedStore.recentProducts
-            .prefix(3)
-            .compactMap { recentProduct in
-                savedStore.product(id: recentProduct.productId) ?? catalog.product(id: recentProduct.productId)
-            }
+    private var preferredGoals: [GroceryGoal] {
+        GroceryGoal.preferred(in: preferences)
     }
 
     private var availableGoals: [GroceryGoal] {
@@ -32,84 +37,97 @@ struct SearchView: View {
     }
 
     private var hasPersonalGoals: Bool {
-        availableGoals.count > 1
+        !preferredGoals.isEmpty
     }
 
-    private var selectedFilteringGoals: [GroceryGoal] {
-        selectedGoal == .all ? [] : [selectedGoal]
+    private var recentProducts: [Product] {
+        savedStore.recentProducts.compactMap { recentProduct in
+            savedStore.product(id: recentProduct.productId) ?? catalog.product(id: recentProduct.productId)
+        }
     }
 
-    private var productSectionTitle: String {
-        if isSearching {
-            return "Search results"
-        }
-
-        if selectedGoal == .all {
-            return "Products to check"
-        }
-
-        return selectedGoal.productSectionTitle
+    private var homeRecentProducts: [Product] {
+        Array(recentProducts.prefix(homeRecentPreviewLimit))
     }
 
-    private var visibleProducts: [Product] {
-        if isSearching {
-            return products
-        }
+    private var goalMatchedProducts: [Product] {
+        GroceryGoal.healthiestMatchingProducts(
+            in: catalog.products,
+            filter: selectedGoal,
+            preferredGoals: preferredGoals
+        )
+    }
 
-        let filteringGoals = selectedFilteringGoals
+    private var homeGoalProducts: [Product] {
+        Array(goalMatchedProducts.prefix(homeGoalPreviewLimit))
+    }
 
-        let source = filteringGoals.isEmpty
-            ? catalog.products
-            : catalog.products.filter { product in
-                filteringGoals.allSatisfy { goal in
-                    goal.matches(product)
-                }
-            }
+    private var homeGoalCarouselProducts: [Product] {
+        let productsAfterMainFeed = Array(goalMatchedProducts.dropFirst(homeGoalPreviewLimit))
+        let mainFeedProducts = Array(goalMatchedProducts.prefix(homeGoalPreviewLimit))
+        return Array((productsAfterMainFeed + mainFeedProducts).prefix(homeGoalCarouselLimit))
+    }
 
-        return source.sorted { lhs, rhs in
-            (lhs.score ?? -1) > (rhs.score ?? -1)
-        }
+    private var goalsForRecommendationLoad: [GroceryGoal] {
+        preferredGoals
+    }
+
+    private var goalRecommendationTaskID: String {
+        let goalIDs = goalsForRecommendationLoad.map(\.id).joined(separator: "-")
+        return "\(catalog.hasLoaded)-\(goalIDs)"
     }
 
     var body: some View {
         List {
             PicklyContentHeader(
                 title: "Check your groceries",
-                subtitle: "Find better picks faster."
+                subtitle: "Find better picks faster.",
+                usesImageBackdrop: true
             )
-                .picklyContentHeaderRow()
+            .picklyContentHeaderRow(top: 44, bottom: 12)
 
-            PicklyInlineSearchField(text: $query, prompt: "Search products or brands")
-                .picklyContentHeaderRow(top: 0, bottom: 14)
+            PicklyInlineSearchField(
+                text: $query,
+                prompt: "Search products or brands",
+                onScan: onScanAnotherProduct
+            )
+            .picklyContentHeaderRow(top: 0, bottom: 20)
 
-            goalsSection
+            if isSearching {
+                searchResultsSection
+            } else {
+                goalsSection
+                goalRecommendationsSection
+                premiumBanner
+                recentSection
 
-            productListSection
-
-            if !isSearching, !recentProducts.isEmpty {
-                recentlyCheckedSection
+                MissingProductCard {
+                    showProductRequest = true
+                }
+                .picklyListCardRow(top: 14, bottom: 28)
             }
-
-            MissingProductCard {
-                showProductRequest = true
-            }
-            .picklyListCardRow(top: 8, bottom: 16)
         }
-        .listStyle(.insetGrouped)
-        .contentMargins(.top, PicklyLayout.rootTopPadding, for: .scrollContent)
+        // InsetGrouped creates a clipped section container around the whole
+        // feed. That container cuts off card shadows at its vertical edges.
+        .listStyle(.plain)
+        .contentMargins(.horizontal, PicklyLayout.screenHorizontalPadding, for: .scrollContent)
+        .contentMargins(.top, PicklyLayout.rootTopPadding + 16, for: .scrollContent)
+        // The native TabView already contributes the bottom safe-area inset for
+        // its tab bar. Adding another 96pt here leaves an empty band below the
+        // final home card.
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
-        .background(PicklyColor.background)
-        .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showProductRequest) {
-            ProductRequestPlaceholderView()
+        .background {
+            SearchViewBackdrop()
         }
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $selectedProduct) { product in
             ProductResultView(
                 product: product,
                 productService: catalog,
                 savedStore: savedStore,
-                preferences: preferences
+                preferences: preferences,
+                onScanAnotherProduct: onScanAnotherProduct
             )
         }
         .navigationDestination(for: Product.self) { product in
@@ -117,7 +135,36 @@ struct SearchView: View {
                 product: product,
                 productService: catalog,
                 savedStore: savedStore,
-                preferences: preferences
+                preferences: preferences,
+                onScanAnotherProduct: onScanAnotherProduct
+            )
+        }
+        .navigationDestination(isPresented: $showAllGoalMatches) {
+            GoalMatchesListView(
+                selectedGoal: selectedGoal,
+                preferredGoals: preferredGoals,
+                catalog: catalog,
+                savedStore: savedStore,
+                preferences: preferences,
+                onScanAnotherProduct: onScanAnotherProduct
+            )
+        }
+        .navigationDestination(isPresented: $showFullHistory) {
+            RecentHistoryListView(
+                products: recentProducts,
+                catalog: catalog,
+                savedStore: savedStore,
+                preferences: preferences,
+                onScanAnotherProduct: onScanAnotherProduct
+            )
+        }
+        .sheet(isPresented: $showPaywall) {
+            PicklyPaywallView()
+        }
+        .sheet(isPresented: $showProductRequest) {
+            ProductRequestView(
+                authStore: authStore,
+                onOpenAccount: onOpenPreferences
             )
         }
         .onAppear {
@@ -128,6 +175,18 @@ struct SearchView: View {
         }
         .task {
             await catalog.loadInitial()
+        }
+        .task(id: goalRecommendationTaskID) {
+            guard hasPersonalGoals, !goalsForRecommendationLoad.isEmpty else { return }
+
+            // Let the first local frame render, then enrich the shelf. The
+            // network request suspends instead of occupying the scroll/tap path.
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            await catalog.loadGoalRecommendations(
+                for: goalsForRecommendationLoad,
+                limit: 12
+            )
         }
         .task(id: query) {
             let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -141,87 +200,206 @@ struct SearchView: View {
     }
 
     @ViewBuilder
-    private var goalsSection: some View {
-        if hasPersonalGoals {
-            sectionHeader("Your goals", top: 18)
+    private var searchResultsSection: some View {
+        PicklyListSectionHeader(
+            title: "Search results",
+            count: products.count
+        )
+        .picklyListSectionHeaderRow(top: 24, bottom: 10)
 
-            GoalScroller(
-                goals: availableGoals,
-                selectedGoal: $selectedGoal
-            )
-        } else {
-            GoalsSetupCard(onChooseGoals: onOpenPreferences)
-                .picklyListCardRow(top: 18, bottom: 10)
-        }
-    }
-
-    @ViewBuilder
-    private var productListSection: some View {
-        sectionHeader(productSectionTitle, top: 24)
-
-        if catalog.isLoading && visibleProducts.isEmpty {
+        if catalog.isLoading && products.isEmpty {
             ProgressView("Loading products…")
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .picklyCardSurface(cornerRadius: 18)
-                .picklyListCardRow(top: 8, bottom: 14)
-        } else if visibleProducts.isEmpty {
+                .padding(20)
+                .picklyCardSurface(cornerRadius: 22)
+                .picklyListCardRow(top: 10, bottom: 16)
+        } else if products.isEmpty {
             Text(catalog.errorMessage ?? "No products yet. Try searching or scanning.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .padding(16)
+                .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .picklyCardSurface(cornerRadius: 18)
-                .picklyListCardRow(top: 8, bottom: 14)
+                .picklyCardSurface(cornerRadius: 22)
+                .picklyListCardRow(top: 10, bottom: 16)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
         } else {
-            SearchProductList(
-                products: visibleProducts,
-                selectedGoals: selectedFilteringGoals,
+            ProductSummaryList(
+                products: products,
+                reasonProvider: { product in
+                    searchReason(for: product)
+                },
                 isSaved: { product in
                     savedStore.isSaved(product)
+                },
+                onToggleSave: { product in
+                    savedStore.toggle(product)
                 },
                 accessibilityLabel: accessibilityLabel(for:),
                 onSelect: { product in
                     selectedProduct = product
                 }
             )
-            .id(productListAnimationID)
-            .picklyListCardRow(top: 8, bottom: 14)
+            .id("search-\(query)")
+            .picklyListCardRow(top: 10, bottom: 16)
             .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
     }
 
     @ViewBuilder
-    private var recentlyCheckedSection: some View {
-        sectionHeader("Recently checked", top: 26)
+    private var goalsSection: some View {
+        if hasPersonalGoals {
+            PicklyListSectionHeader(
+                title: "Your goals",
+                subtitle: "Picked for your preferences",
+                actionTitle: "Edit",
+                actionIcon: "square.and.pencil",
+                onAction: onOpenPreferences
+            )
+            .picklyListSectionHeaderRow(top: 24, bottom: 8)
 
-        SearchProductList(
-            products: recentProducts,
-            selectedGoals: [],
-            isSaved: { product in
-                savedStore.isSaved(product)
-            },
-            accessibilityLabel: accessibilityLabel(for:),
-            onSelect: { product in
-                selectedProduct = product
+            GoalScroller(
+                goals: availableGoals,
+                selectedGoal: $selectedGoal
+            )
+
+            if (catalog.isLoading || catalog.isLoadingGoalRecommendations) && goalMatchedProducts.isEmpty {
+                ProgressView("Loading products…")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(20)
+                    .picklyCardSurface(cornerRadius: 22)
+                    .picklyListCardRow(top: 4, bottom: 16)
+            } else if goalMatchedProducts.isEmpty {
+                HomeEmptyStateCard(
+                    title: catalog.goalRecommendationsErrorMessage == nil
+                        ? "No verified matches yet"
+                        : "Couldn't refresh matches",
+                    message: catalog.goalRecommendationsErrorMessage
+                        ?? "No catalog products are verified for this goal yet. Try another goal or scan a product.",
+                    actionTitle: catalog.goalRecommendationsErrorMessage == nil
+                        ? "Scan product"
+                        : "Try again",
+                    action: catalog.goalRecommendationsErrorMessage == nil
+                        ? onScanAnotherProduct
+                        : {
+                            Task {
+                                await catalog.retryGoalRecommendations(
+                                    for: goalsForRecommendationLoad,
+                                    limit: 12
+                                )
+                            }
+                        }
+                )
+                .picklyListCardRow(top: 4, bottom: 16)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else {
+                ProductSummaryList(
+                    products: homeGoalProducts,
+                    reasonProvider: { product in
+                        goalReason(for: product)
+                    },
+                    isSaved: { product in
+                        savedStore.isSaved(product)
+                    },
+                    onToggleSave: { product in
+                        savedStore.toggle(product)
+                    },
+                    accessibilityLabel: accessibilityLabel(for:),
+                    onSelect: { product in
+                        selectedProduct = product
+                    }
+                )
+                .id("goals-\(selectedGoal.id)")
+                .picklyListCardRow(top: 4, bottom: goalMatchedProducts.count > homeGoalPreviewLimit ? 8 : 16)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+
+                HomeSeeAllButton(title: "See all") {
+                    showAllGoalMatches = true
+                }
+                .picklyListCardRow(top: 0, bottom: 16)
             }
-        )
-        .picklyListCardRow(top: 8, bottom: 14)
-        .transition(.opacity.combined(with: .move(edge: .bottom)))
-    }
+        } else {
+            PicklyListSectionHeader(
+                title: "Your goals",
+                subtitle: "Picked for your preferences"
+            )
+            .picklyListSectionHeaderRow(top: 24, bottom: 10)
 
-    private var productListAnimationID: String {
-        if isSearching {
-            return "search-\(query)"
+            HomeEmptyStateCard(
+                title: "Set your goals",
+                message: "Get picks matched to what matters to you.",
+                actionTitle: "Choose goals",
+                action: onOpenPreferences
+            )
+            .picklyListCardRow(top: 4, bottom: 16)
         }
-
-        return selectedGoal.id
     }
 
-    private func sectionHeader(_ title: String, top: CGFloat = 22) -> some View {
-        PicklyListSectionHeader(title: title)
-            .picklyListSectionHeaderRow(top: top, bottom: 6)
+    @ViewBuilder
+    private var goalRecommendationsSection: some View {
+        if hasPersonalGoals, !homeGoalCarouselProducts.isEmpty {
+            LockedGoalSectionHeader()
+            .picklyListSectionHeaderRow(top: 22, bottom: 8)
+
+            LockedProductCarousel(
+                products: homeGoalCarouselProducts,
+                reasonProvider: { product in
+                    goalReason(for: product)
+                },
+                accessibilityItemName: "goal match",
+                onUpgrade: {
+                    showPaywall = true
+                }
+            )
+            .id("goal-recommendations-\(selectedGoal.id)")
+            .picklyListCardRow(top: 2, bottom: 16)
+        }
+    }
+
+    private var premiumBanner: some View {
+        PremiumBanner {
+            showPaywall = true
+        }
+        .picklyListCardRow(top: 12, bottom: 12)
+    }
+
+    @ViewBuilder
+    private var recentSection: some View {
+        PicklyListSectionHeader(
+            title: "Recent scans",
+            subtitle: "Products you checked recently",
+            actionTitle: recentProducts.isEmpty ? nil : "See all",
+            onAction: recentProducts.isEmpty ? nil : { showFullHistory = true }
+        )
+        .picklyListSectionHeaderRow(top: 28, bottom: 10)
+
+        if homeRecentProducts.isEmpty {
+            HomeEmptyStateCard(
+                title: "Nothing here yet",
+                message: "Scan or search for your first product.",
+                actionTitle: "Scan product",
+                action: onScanAnotherProduct
+            )
+            .picklyListCardRow(top: 4, bottom: 16)
+        } else {
+            ProductSummaryList(
+                products: homeRecentProducts,
+                reasonProvider: { product in
+                    recentReason(for: product)
+                },
+                isSaved: { product in
+                    savedStore.isSaved(product)
+                },
+                onToggleSave: { product in
+                    savedStore.toggle(product)
+                },
+                accessibilityLabel: accessibilityLabel(for:),
+                onSelect: { product in
+                    selectedProduct = product
+                }
+            )
+            .picklyListCardRow(top: 4, bottom: 16)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
     }
 
     private func accessibilityLabel(for product: Product) -> String {
@@ -232,166 +410,29 @@ struct SearchView: View {
         return "\(product.name), \(product.brand), Limited data"
     }
 
-    private func syncSelectedGoal(with preferences: UserPreferences) {
-        guard GroceryGoal.available(in: preferences).contains(selectedGoal) else {
-            selectedGoal = .all
-            return
+    private func goalReason(for product: Product) -> String {
+        if let match = GroceryGoal.primaryMatch(
+            for: product,
+            filter: selectedGoal,
+            preferredGoals: preferredGoals
+        ) {
+            return match.productReason
         }
-    }
-}
 
-private struct GoalScroller: View {
-    let goals: [GroceryGoal]
-    @Binding var selectedGoal: GroceryGoal
-
-    var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 10) {
-                ForEach(goals) { goal in
-                    Button {
-                        toggle(goal)
-                    } label: {
-                        GoalChip(
-                            goal: goal,
-                            isSelected: selectedGoal == goal
-                        )
-                    }
-                    .buttonStyle(PicklyPressableButtonStyle())
-                    .accessibilityLabel(goal.title)
-                    .accessibilityAddTraits(selectedGoal == goal ? .isSelected : [])
-                }
-            }
-            .scrollTargetLayout()
-            .padding(.horizontal, 1)
-            .padding(.vertical, 2)
-        }
-        .scrollIndicators(.hidden)
-        .scrollTargetBehavior(.viewAligned)
-        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 14, trailing: 0))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
+        return searchReason(for: product)
     }
 
-    private func toggle(_ goal: GroceryGoal) {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-            selectedGoal = goal
+    private func recentReason(for product: Product) -> String {
+        if let match = preferredGoals.first(where: { $0.matches(product) }) {
+            return match.productReason
         }
-    }
-}
 
-private struct GoalChip: View {
-    let goal: GroceryGoal
-    let isSelected: Bool
-
-    var body: some View {
-        HStack(spacing: 9) {
-            Image(systemName: goal.systemImage)
-                .font(.subheadline.weight(.semibold))
-
-            Text(goal.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .foregroundStyle(isSelected ? PicklyColor.deepMarket : .primary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .picklyCardSurface(
-            cornerRadius: 18,
-            fill: isSelected ? PicklyColor.primary.opacity(0.16) : PicklyColor.card,
-            stroke: isSelected ? PicklyColor.primary.opacity(0.42) : PicklyColor.stroke.opacity(0.52)
-        )
-        .contentShape(Capsule())
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: isSelected)
-    }
-}
-
-private struct GoalsSetupCard: View {
-    let onChooseGoals: (() -> Void)?
-
-    var body: some View {
-        Group {
-            if let onChooseGoals {
-                Button(action: onChooseGoals) {
-                    content
-                }
-                .buttonStyle(PicklyPressableButtonStyle())
-            } else {
-                content
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Set grocery goals. Open Profile to choose preferences.")
+        return searchReason(for: product)
     }
 
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Set grocery goals")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.primary)
-
-                Text("Turn on preferences in Profile to show quick filters here.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if onChooseGoals != nil {
-                HStack(spacing: 6) {
-                    Text("Open Profile")
-                        .font(.subheadline.weight(.semibold))
-
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.bold))
-                }
-                .foregroundStyle(PicklyColor.primary)
-            }
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .picklyCardSurface(
-            cornerRadius: 20,
-            fill: PicklyColor.card,
-            stroke: PicklyColor.stroke.opacity(0.48)
-        )
-    }
-}
-
-private struct SearchProductList: View {
-    let products: [Product]
-    let selectedGoals: [GroceryGoal]
-    let isSaved: (Product) -> Bool
-    let accessibilityLabel: (Product) -> String
-    let onSelect: (Product) -> Void
-
-    var body: some View {
-        VStack(spacing: 10) {
-            ForEach(products) { product in
-                Button {
-                    onSelect(product)
-                } label: {
-                    SearchProductCard(
-                        product: product,
-                        reason: reason(for: product),
-                        isSaved: isSaved(product)
-                    )
-                }
-                .buttonStyle(PicklyPressableButtonStyle())
-                .accessibilityLabel(accessibilityLabel(product))
-            }
-        }
-    }
-
-    private func reason(for product: Product) -> String {
+    private func searchReason(for product: Product) -> String {
         if product.isLimitedData {
             return "Limited data"
-        }
-
-        if let matchingGoal = selectedGoals.first(where: { $0.matches(product) }) {
-            return matchingGoal.productReason
         }
 
         if (product.sugarForScoring ?? .greatestFiniteMagnitude) <= 5 {
@@ -412,89 +453,207 @@ private struct SearchProductList: View {
 
         return product.positives.first ?? product.verdict
     }
-}
 
-private struct SearchProductCard: View {
-    let product: Product
-    let reason: String
-    let isSaved: Bool
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ProductThumbnailView(product: product, size: 48, cornerRadius: 13)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(product.name)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-
-                Text(product.brand)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                Text(reason)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-            }
-
-            Spacer(minLength: 8)
-
-            VStack(spacing: 5) {
-                CompactVerdictBadge(product: product)
-
-                if isSaved {
-                    Image(systemName: "bookmark.fill")
-                        .font(.caption)
-                        .foregroundStyle(PicklyColor.primary)
-                        .accessibilityLabel("Saved")
-                }
-            }
+    private func syncSelectedGoal(with preferences: UserPreferences) {
+        guard GroceryGoal.available(in: preferences).contains(selectedGoal) else {
+            selectedGoal = .all
+            return
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .picklyCardSurface(cornerRadius: 18)
     }
 }
 
-private struct CompactVerdictBadge: View {
-    let product: Product
+private struct GoalScroller: View {
+    let goals: [GroceryGoal]
+    @Binding var selectedGoal: GroceryGoal
 
     var body: some View {
-        VStack(spacing: 2) {
-            Text(product.verdict)
-                .font(.caption2.bold())
-                .lineLimit(1)
-                .minimumScaleFactor(0.68)
+        ScrollView(.horizontal) {
+            GlassEffectContainer(spacing: 10) {
+                HStack(spacing: 10) {
+                    ForEach(goals) { goal in
+                        Button {
+                            toggle(goal)
+                        } label: {
+                            GoalChip(
+                                goal: goal,
+                                isSelected: selectedGoal == goal
+                            )
+                        }
+                        .buttonStyle(PicklyPressableButtonStyle())
+                        .accessibilityLabel(goal.title)
+                        .accessibilityAddTraits(selectedGoal == goal ? .isSelected : [])
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .padding(.vertical, 14)
+        }
+        .scrollIndicators(.hidden)
+        .scrollTargetBehavior(.viewAligned)
+        .contentMargins(.horizontal, PicklyLayout.screenHorizontalPadding, for: .scrollContent)
+        .contentMargins(.horizontal, 0, for: .scrollIndicators)
+        // Expand the shelf beyond the inset List cell, then keep its content
+        // aligned with the screen grid. This prevents the final chip and its
+        // glass shadow from being clipped by the row container.
+        .padding(.horizontal, -PicklyLayout.screenHorizontalPadding)
+        .scrollClipDisabled(true)
+        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 14, trailing: 0))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
 
-            if !product.isLimitedData, let score = product.score {
-                Text("\(score)")
-                    .font(.caption2.monospacedDigit().weight(.semibold))
-                    .lineLimit(1)
+    private func toggle(_ goal: GroceryGoal) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+            selectedGoal = goal
+        }
+    }
+}
+
+private struct SearchViewBackdrop: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var blurRadius: CGFloat {
+        reduceTransparency ? 0 : 2
+    }
+
+    private var imageOpacity: CGFloat {
+        colorScheme == .dark ? 0.70 : 0.94
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            PicklyColor.background
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                ZStack(alignment: .bottom) {
+                    Image("SearchBackground")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 410)
+                        .scaleEffect(1.04)
+                        .blur(radius: blurRadius)
+                        .opacity(imageOpacity)
+                        .clipped()
+
+                    LinearGradient(
+                        colors: colorScheme == .light
+                            ? [
+                                PicklyColor.background.opacity(0.04),
+                                PicklyColor.background.opacity(0.28),
+                                PicklyColor.background.opacity(0.78),
+                                PicklyColor.background
+                            ]
+                            : [
+                                Color.black.opacity(0.34),
+                                Color.black.opacity(0.25),
+                                PicklyColor.background.opacity(0.72),
+                                PicklyColor.background
+                            ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: colorScheme == .light ? 300 : 410)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .ignoresSafeArea(edges: .top)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct GoalChip: View {
+    let goal: GroceryGoal
+    let isSelected: Bool
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var body: some View {
+        Group {
+            if reduceTransparency {
+                chipContent
+                    .background(
+                        isSelected ? PicklyColor.mint : PicklyColor.card,
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .overlay {
+                        chipBorder
+                    }
+            } else {
+                chipContent
+                    .glassEffect(
+                        isSelected
+                            ? .regular.tint(PicklyColor.primary.opacity(0.16)).interactive()
+                            : .regular.interactive(),
+                        in: .rect(cornerRadius: 18)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.75)
+                    }
             }
         }
-        .foregroundStyle(product.verdictForegroundColor)
-        .padding(.horizontal, 9)
-        .frame(width: product.isLimitedData ? 76 : 58, height: 42)
-        .background(product.verdictFillColor, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(product.verdictColor.opacity(0.22), lineWidth: 1)
+        .picklyCardShadow()
+        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: isSelected)
+    }
+
+    private var chipContent: some View {
+        HStack(spacing: 8) {
+            PicklyIconImage(systemName: goal.systemImage, size: 16)
+
+            Text(goal.title)
+                .font(.system(size: 15, weight: .semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
+        .foregroundStyle(isSelected ? PicklyColor.primary : .primary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    private var chipBorder: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .strokeBorder(
+                isSelected ? PicklyColor.primary.opacity(0.44) : PicklyColor.stroke.opacity(0.44),
+                lineWidth: 1
+            )
+    }
+}
+
+private struct LockedGoalSectionHeader: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("More for your goals")
+                    .font(.title3.bold())
+                    .foregroundStyle(.primary)
+                    .accessibilityAddTraits(.isHeader)
+
+                Text("Healthier matches based on your preferences")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 4)
+
+            PicklyPlusBadge()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 private struct MissingProductCard: View {
-    let onRequestProduct: () -> Void
+    let action: () -> Void
 
     var body: some View {
-        Button(action: onRequestProduct) {
+        Button(action: action) {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "plus.viewfinder")
-                    .font(.body.weight(.semibold))
+                PicklyIconImage(systemName: "barcode.viewfinder", size: 18)
                     .foregroundStyle(PicklyColor.primary)
                     .frame(width: 34, height: 34)
                     .background(PicklyColor.mint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -504,10 +663,9 @@ private struct MissingProductCard: View {
                         .font(.headline)
                         .foregroundStyle(.primary)
 
-                    Text("Request it with a barcode and photos.")
+                    Text("Send its barcode or product details.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -534,100 +692,694 @@ private struct MissingProductCard: View {
     }
 }
 
-struct ProductRequestPlaceholderView: View {
-    @Environment(\.dismiss) private var dismiss
-    let barcode: String?
-
-    init(barcode: String? = nil) {
-        self.barcode = barcode
-    }
+private struct PremiumBanner: View {
+    let action: () -> Void
 
     var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 18) {
-                Image(systemName: "plus.viewfinder")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(PicklyColor.primary)
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 14) {
+                PicklyIconImage(systemName: "sparkles", size: 22)
+                    // The badge keeps the same pastel fill in both appearances,
+                    // so its glyph must remain dark instead of following the
+                    // adaptive dark-mode foreground used by deepMarket.
+                    .foregroundStyle(PicklyColor.statusWarningForeground)
+                    .frame(width: 42, height: 42)
+                    .background(PicklyColor.brandLemon, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Request product")
-                        .font(.title.bold())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Get more from every scan")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.primary)
 
-                    Text(barcode == nil ? "Request a product with a barcode and optional photos." : "This barcode will be included with your request. You can add photos later.")
-                        .font(.body)
+                    Text("Compare products, find better alternatives and unlock deeper insights.")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if let barcode {
-                    HStack(spacing: 8) {
-                        Image(systemName: "number")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
 
-                        Text(barcode)
-                            .font(.footnote.monospacedDigit().weight(.semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.78)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(PicklyColor.stroke.opacity(0.45), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .accessibilityLabel("Barcode \(barcode)")
-                }
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(PicklyColor.primary)
+                    .accessibilityHidden(true)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .picklyGlassCardSurface(cornerRadius: 20)
+        }
+        .buttonStyle(PicklyPressableButtonStyle())
+        .accessibilityLabel("Explore Premium. Get more from every scan.")
+    }
+}
 
-                VStack(alignment: .leading, spacing: 12) {
-                    RequestStepRow(systemImage: "barcode.viewfinder", title: "Share the barcode")
-                    RequestStepRow(systemImage: "camera", title: "Add optional photos")
-                    RequestStepRow(systemImage: "checkmark.seal", title: "Product can be reviewed later")
-                }
+private struct ProductRequestView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var authStore: AuthStore
+    let onOpenAccount: (() -> Void)?
 
-                Button {
-                    dismiss()
-                } label: {
-                    Text("Got it")
-                        .frame(maxWidth: .infinity)
-                }
+    @State private var barcode = ""
+    @State private var productName = ""
+    @State private var brand = ""
+    @State private var note = ""
+    @State private var isSubmitting = false
+    @State private var didSubmit = false
+    @State private var errorMessage: String?
+
+    private let service = ProductRequestService()
+
+    var body: some View {
+        NavigationStack {
+            content
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button(primaryActionTitle, action: primaryAction)
+                .font(.headline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 52)
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .tint(PicklyColor.primary)
                 .picklyProminentButtonForeground()
-
-                Spacer()
+                .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+                .background(.regularMaterial)
+                .disabled(isSubmitting || (isSignedIn && !didSubmit && !canSubmit))
             }
-            .padding(20)
             .navigationTitle("Request product")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task {
+                await authStore.restoreSessionIfNeeded()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if authStore.isRestoringSession {
+            ProgressView("Checking your account…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if didSubmit {
+            ContentUnavailableView(
+                "Request sent",
+                systemImage: "checkmark.circle.fill",
+                description: Text("Thanks. The product can now be reviewed for a future catalog update.")
+            )
+        } else if isSignedIn {
+            Form {
+                Section {
+                    TextField("Barcode", text: $barcode)
+                        .keyboardType(.numberPad)
+                        .textContentType(.none)
+
+                    TextField("Product name", text: $productName)
+                    TextField("Brand", text: $brand)
+                } header: {
+                    Text("Product details")
+                } footer: {
+                    Text("Add a product name or a valid barcode. Brand is optional.")
+                }
+
+                Section("Anything else?") {
+                    TextField("Optional note", text: $note, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+
+                if let errorMessage {
+                    Section {
+                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                            .foregroundStyle(.red)
                     }
                 }
             }
+        } else {
+            ContentUnavailableView(
+                "Sign in to send a request",
+                systemImage: "person.crop.circle.badge.exclamationmark",
+                description: Text("An account keeps product requests attributable and protected by Pickly's privacy rules.")
+            )
+        }
+    }
+
+    private var isSignedIn: Bool {
+        authStore.currentSession != nil
+    }
+
+    private var canSubmit: Bool {
+        let hasName = !productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let trimmedBarcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasValidBarcode = !trimmedBarcode.isEmpty && BarcodeValidator.normalize(trimmedBarcode) != nil
+        return hasName || hasValidBarcode
+    }
+
+    private var primaryActionTitle: String {
+        if didSubmit { return "Done" }
+        if !isSignedIn { return "Open Profile" }
+        return isSubmitting ? "Sending…" : "Send request"
+    }
+
+    private func primaryAction() {
+        if didSubmit {
+            dismiss()
+        } else if !isSignedIn {
+            dismiss()
+            onOpenAccount?()
+        } else {
+            submit()
+        }
+    }
+
+    private func submit() {
+        guard let session = authStore.currentSession else { return }
+
+        do {
+            let draft = try ProductRequestDraft(
+                barcode: barcode,
+                name: productName,
+                brand: brand,
+                note: note
+            )
+            isSubmitting = true
+            errorMessage = nil
+
+            Task {
+                do {
+                    try await service.submit(draft, session: session)
+                    didSubmit = true
+                } catch {
+                    errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                }
+                isSubmitting = false
+            }
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 }
 
-private struct RequestStepRow: View {
-    let systemImage: String
+private struct HomeEmptyStateCard: View {
     let title: String
+    let message: String
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(PicklyColor.primary)
-                .frame(width: 30, height: 30)
-                .background(PicklyColor.mint, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
 
-            Text(title)
-                .font(.headline)
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            Spacer()
+            if let actionTitle, let action {
+                Button(action: action) {
+                    Text(actionTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(PicklyColor.deepMarket)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(PicklyColor.primary.opacity(0.14), in: Capsule())
+                }
+                .buttonStyle(PicklyPressableButtonStyle())
+            }
         }
-        .padding(14)
-        .picklyCardSurface(cornerRadius: 16)
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .picklyCardSurface(cornerRadius: 22, stroke: PicklyColor.stroke.opacity(0.45))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct HomeSeeAllButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+            }
+            .foregroundStyle(PicklyColor.primary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .picklyCardSurface(cornerRadius: 18, stroke: PicklyColor.stroke.opacity(0.45))
+        }
+        .buttonStyle(PicklyPressableButtonStyle())
+        .accessibilityLabel(title)
+    }
+}
+
+private enum ProductSortOption: String, CaseIterable, Identifiable {
+    case bestMatch = "Best match"
+    case highestScore = "Highest score"
+    case recentlyAdded = "Recently added"
+
+    var id: String { rawValue }
+}
+
+private enum DietaryFilter: String, CaseIterable, Identifiable {
+    case any
+    case vegetarian
+    case vegan
+    case glutenFree
+    case lactoseFree
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .any: "Any"
+        case .vegetarian: "Vegetarian"
+        case .vegan: "Vegan"
+        case .glutenFree: "Gluten-free"
+        case .lactoseFree: "Lactose-free"
+        }
+    }
+
+    func matches(_ product: Product) -> Bool {
+        switch self {
+        case .any:
+            return true
+        case .vegetarian:
+            return product.dietary.vegetarian == .confirmed
+        case .vegan:
+            return product.dietary.vegan == .confirmed
+        case .glutenFree:
+            return product.dietary.glutenFree == .confirmed
+        case .lactoseFree:
+            return product.dietary.lactoseFree == .confirmed
+        }
+    }
+}
+
+private struct GoalMatchesListView: View {
+    let preferredGoals: [GroceryGoal]
+    @ObservedObject var catalog: ProductCatalogStore
+    @ObservedObject var savedStore: SavedProductsStore
+    let preferences: UserPreferences
+    var onScanAnotherProduct: (() -> Void)? = nil
+
+    @State private var selectedGoal: GroceryGoal
+    @State private var query = ""
+    @State private var sortOption: ProductSortOption = .bestMatch
+    @State private var showFilters = false
+    @State private var selectedCategory: String?
+    @State private var selectedBrand: String?
+    @State private var minimumScore = 0
+    @State private var dietaryFilter: DietaryFilter = .any
+    @State private var selectedProduct: Product?
+
+    init(
+        selectedGoal: GroceryGoal,
+        preferredGoals: [GroceryGoal],
+        catalog: ProductCatalogStore,
+        savedStore: SavedProductsStore,
+        preferences: UserPreferences,
+        onScanAnotherProduct: (() -> Void)? = nil
+    ) {
+        self.preferredGoals = preferredGoals
+        self.catalog = catalog
+        self.savedStore = savedStore
+        self.preferences = preferences
+        self.onScanAnotherProduct = onScanAnotherProduct
+        _selectedGoal = State(initialValue: selectedGoal)
+    }
+
+    private var availableGoals: [GroceryGoal] {
+        [.all] + preferredGoals
+    }
+
+    private var listTitle: String {
+        selectedGoal == .all ? "Your goals" : selectedGoal.title
+    }
+
+    private var goalProducts: [Product] {
+        GroceryGoal.healthiestMatchingProducts(
+            in: catalog.products,
+            filter: selectedGoal,
+            preferredGoals: preferredGoals
+        )
+    }
+
+    private var categoryOptions: [String] {
+        Set(goalProducts.map(\.category)).sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+    }
+
+    private var brandOptions: [String] {
+        Set(goalProducts.map(\.brand)).sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+    }
+
+    private var filteredProducts: [Product] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matching = goalProducts.filter { product in
+            let matchesQuery = normalizedQuery.isEmpty
+                || product.name.localizedCaseInsensitiveContains(normalizedQuery)
+                || product.brand.localizedCaseInsensitiveContains(normalizedQuery)
+            let matchesCategory = selectedCategory == nil || product.category == selectedCategory
+            let matchesBrand = selectedBrand == nil || product.brand == selectedBrand
+            let matchesScore = minimumScore == 0 || (product.score ?? -1) >= minimumScore
+
+            return matchesQuery
+                && matchesCategory
+                && matchesBrand
+                && matchesScore
+                && dietaryFilter.matches(product)
+        }
+
+        switch sortOption {
+        case .bestMatch:
+            return matching
+        case .highestScore:
+            return matching.sorted { lhs, rhs in
+                if lhs.score != rhs.score {
+                    return (lhs.score ?? -1) > (rhs.score ?? -1)
+                }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        case .recentlyAdded:
+            let positions = catalog.products.enumerated().reduce(into: [String: Int]()) { result, entry in
+                result[entry.element.id] = entry.offset
+            }
+            return matching.sorted { lhs, rhs in
+                (positions[lhs.id] ?? -1) > (positions[rhs.id] ?? -1)
+            }
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                Text("Picked for your preferences")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 6)
+                    .padding(.bottom, 12)
+
+                PicklyInlineSearchField(
+                    text: $query,
+                    prompt: "Search products or brands",
+                    onScan: onScanAnotherProduct
+                )
+                .padding(.bottom, 4)
+
+                GoalScroller(
+                    goals: availableGoals,
+                    selectedGoal: $selectedGoal
+                )
+
+                sortAndFilterBar
+
+                if filteredProducts.isEmpty {
+                    HomeEmptyStateCard(
+                        title: goalProducts.isEmpty ? "No matches yet" : "No products found",
+                        message: goalProducts.isEmpty
+                            ? "Scan more products to find picks for your goals."
+                            : "Try another search or clear a filter.",
+                        actionTitle: goalProducts.isEmpty ? "Scan product" : nil,
+                        action: goalProducts.isEmpty ? onScanAnotherProduct : nil
+                    )
+                    .padding(.top, 8)
+                } else {
+                    ProductSummaryList(
+                        products: filteredProducts,
+                        reasonProvider: { product in
+                            GroceryGoal.primaryMatch(
+                                for: product,
+                                filter: selectedGoal,
+                                preferredGoals: preferredGoals
+                            )?.productReason ?? product.verdict
+                        },
+                        isSaved: { savedStore.isSaved($0) },
+                        onToggleSave: { savedStore.toggle($0) },
+                        accessibilityLabel: accessibilityLabel(for:),
+                        onSelect: { selectedProduct = $0 }
+                    )
+                    .padding(.top, 2)
+                }
+            }
+            .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
+            .safeAreaPadding(.bottom, 96)
+        }
+        .scrollIndicators(.hidden)
+        .scrollContentBackground(.hidden)
+        .background(PicklyColor.background)
+        .navigationTitle(listTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $selectedProduct) { product in
+            ProductResultView(
+                product: product,
+                productService: catalog,
+                savedStore: savedStore,
+                preferences: preferences,
+                onScanAnotherProduct: onScanAnotherProduct
+            )
+        }
+        .onChange(of: selectedGoal) { _, _ in
+            selectedCategory = nil
+            selectedBrand = nil
+        }
+        .sheet(isPresented: $showFilters) {
+            AdvancedProductFiltersView(
+                category: $selectedCategory,
+                brand: $selectedBrand,
+                minimumScore: $minimumScore,
+                dietaryFilter: $dietaryFilter,
+                categories: categoryOptions,
+                brands: brandOptions
+            )
+            .presentationDetents([.medium, .large])
+        }
+        .task(id: query) {
+            let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmedQuery.count >= 2 else { return }
+
+            try? await Task.sleep(for: .milliseconds(280))
+            guard !Task.isCancelled else { return }
+            await catalog.search(query: trimmedQuery)
+        }
+    }
+
+    private var sortAndFilterBar: some View {
+        HStack(spacing: 10) {
+            Menu {
+                Picker("Sort by", selection: $sortOption) {
+                    ForEach(ProductSortOption.allCases) { option in
+                        Text(option.rawValue).tag(option)
+                    }
+                }
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+
+            Button {
+                showFilters = true
+            } label: {
+                Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
+            }
+
+            Spacer(minLength: 0)
+
+            Text(filteredProducts.count, format: .number)
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("\(filteredProducts.count) results")
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(PicklyColor.primary)
+        .padding(.vertical, 12)
+    }
+
+    private func accessibilityLabel(for product: Product) -> String {
+        if !product.isLimitedData, let score = product.score {
+            return "\(product.name), \(product.brand), \(product.verdict), score \(score)"
+        }
+        return "\(product.name), \(product.brand), Limited data"
+    }
+}
+
+private struct AdvancedProductFiltersView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var category: String?
+    @Binding var brand: String?
+    @Binding var minimumScore: Int
+    @Binding var dietaryFilter: DietaryFilter
+    let categories: [String]
+    let brands: [String]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Goals") {
+                    Text("Use the goal chips above to change the active preference.")
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Category and brand") {
+                    Picker("Category", selection: categorySelection) {
+                        Text("Any category").tag("")
+                        ForEach(categories, id: \.self) { value in
+                            Text(value).tag(value)
+                        }
+                    }
+
+                    Picker("Brand", selection: brandSelection) {
+                        Text("Any brand").tag("")
+                        ForEach(brands, id: \.self) { value in
+                            Text(value).tag(value)
+                        }
+                    }
+                }
+
+                Section("Score") {
+                    Picker("Minimum score", selection: $minimumScore) {
+                        Text("Any score").tag(0)
+                        Text("70 and above").tag(70)
+                        Text("85 and above").tag(85)
+                    }
+                }
+
+                Section("Dietary attributes") {
+                    Picker("Preference", selection: $dietaryFilter) {
+                        ForEach(DietaryFilter.allCases) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                }
+
+                Section {
+                    Button("Clear filters", role: .destructive) {
+                        category = nil
+                        brand = nil
+                        minimumScore = 0
+                        dietaryFilter = .any
+                    }
+                }
+            }
+            .navigationTitle("Filters")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var categorySelection: Binding<String> {
+        Binding(
+            get: { category ?? "" },
+            set: { category = $0.isEmpty ? nil : $0 }
+        )
+    }
+
+    private var brandSelection: Binding<String> {
+        Binding(
+            get: { brand ?? "" },
+            set: { brand = $0.isEmpty ? nil : $0 }
+        )
+    }
+}
+
+private struct RecentHistoryListView: View {
+    let products: [Product]
+    @ObservedObject var catalog: ProductCatalogStore
+    @ObservedObject var savedStore: SavedProductsStore
+    let preferences: UserPreferences
+    var onScanAnotherProduct: (() -> Void)? = nil
+
+    @State private var query = ""
+    @State private var selectedProduct: Product?
+
+    private var filteredProducts: [Product] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuery.isEmpty else { return products }
+
+        return products.filter { product in
+            product.name.localizedCaseInsensitiveContains(normalizedQuery)
+                || product.brand.localizedCaseInsensitiveContains(normalizedQuery)
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                Text("Products you checked recently")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 6)
+                    .padding(.bottom, 12)
+
+                PicklyInlineSearchField(
+                    text: $query,
+                    prompt: "Search recent scans",
+                    onScan: onScanAnotherProduct
+                )
+                .padding(.bottom, 8)
+
+                if filteredProducts.isEmpty {
+                    HomeEmptyStateCard(
+                        title: products.isEmpty ? "Nothing here yet" : "No scans found",
+                        message: products.isEmpty
+                            ? "Scan or search for your first product."
+                            : "Try another product name or brand.",
+                        actionTitle: products.isEmpty ? "Scan product" : nil,
+                        action: products.isEmpty ? onScanAnotherProduct : nil
+                    )
+                } else {
+                    ProductSummaryList(
+                        products: filteredProducts,
+                        reasonProvider: { product in
+                            if product.isLimitedData {
+                                return "Limited data"
+                            }
+                            return product.positives.first ?? product.verdict
+                        },
+                        isSaved: { savedStore.isSaved($0) },
+                        onToggleSave: { savedStore.toggle($0) },
+                        accessibilityLabel: { product in
+                            if !product.isLimitedData, let score = product.score {
+                                return "\(product.name), \(product.brand), \(product.verdict), score \(score)"
+                            }
+                            return "\(product.name), \(product.brand), Limited data"
+                        },
+                        onSelect: { selectedProduct = $0 }
+                    )
+                }
+            }
+            .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
+            .safeAreaPadding(.bottom, 96)
+        }
+        .scrollIndicators(.hidden)
+        .scrollContentBackground(.hidden)
+        .background(PicklyColor.background)
+        .navigationTitle("Recent scans")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $selectedProduct) { product in
+            ProductResultView(
+                product: product,
+                productService: catalog,
+                savedStore: savedStore,
+                preferences: preferences,
+                onScanAnotherProduct: onScanAnotherProduct
+            )
+        }
     }
 }
 
@@ -636,7 +1388,9 @@ private struct RequestStepRow: View {
         SearchView(
             catalog: ProductCatalogStore.preview,
             savedStore: SavedProductsStore(),
+            authStore: AuthStore(),
             preferences: .prototype
         )
     }
+    .environmentObject(SubscriptionStore(loadProducts: false))
 }

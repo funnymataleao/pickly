@@ -1,10 +1,12 @@
 # Pickly Supabase Setup
 
-This is the recommended backend shape for the Pickly MVP. Keep the app local/mock-first until the core UX is stable, then connect these tables behind service protocols.
+This document describes the production Supabase backend used by Pickly. Local fixtures remain available only for previews and explicit Debug fallback scenarios.
 
 ## Current connection status
 
-Pickly is connected to Supabase project `bslsanvmkwjzbjerpzpi` in the `eu-west-1` region. The schema, RLS policies, private auth trigger, `delete-account` Edge Function, and six verified Open Food Facts catalog snapshots are deployed. The app reads Supabase first, then falls back to Open Food Facts for barcode lookup and search; no `service_role` key is shipped to iOS.
+Pickly is connected to Supabase project `bslsanvmkwjzbjerpzpi` in the `eu-west-1` region. The schema, RLS policies, private auth trigger, `apple_provider_tokens` table, `apple-token` and `delete-account` Edge Functions, 30 verified catalog products, and 17 curated product-alternative relations are deployed. The Apple Developer key is stored in Supabase Edge Function Secrets (`APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`); no `service_role` key is shipped to iOS. A real-device auth/deletion E2E check remains before release.
+
+Release builds validate `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and all Google OAuth client identifiers before compilation. Supply these public runtime values through `Config/Local.xcconfig` for local archives or matching Xcode Cloud environment/build settings. The validation script never prints their values.
 
 ## 1. Project Setup
 
@@ -14,7 +16,7 @@ Pickly is connected to Supabase project `bslsanvmkwjzbjerpzpi` in the `eu-west-1
    - Publishable key, or legacy anon key if publishable keys are not enabled yet
 3. Never put a secret key or service_role key in the iOS app.
 4. Enable Auth providers:
-   - Email OTP for fast MVP testing
+   - Email/password authentication with password recovery
    - Sign in with Apple before TestFlight/App Store
 5. Add the iOS URL/deep-link handling when Supabase Auth is connected in SwiftUI.
 
@@ -305,8 +307,70 @@ with check ((select auth.uid()) = user_id);
 
 ## 7. iOS configuration and account deletion
 
-`SupabaseCredentials` reads `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from `PicklyAppInfo.plist`, populated by the ignored `Config/Local.xcconfig` attached to the Pickly target. Do not put credentials back into Swift source. The app uses only the publishable key. A `service_role` key must never be embedded in the app.
+`SupabaseCredentials` reads `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from `PicklyAppInfo.plist`. The target uses `Config/Base.xcconfig`, which supplies empty build-safe defaults and optionally includes the ignored `Config/Local.xcconfig`. CI or archive automation must inject the public runtime values. Do not put credentials into Swift source. The app uses only the publishable key. A `service_role` key must never be embedded in the app.
 
-Deploy `supabase/functions/delete-account/index.ts` as an Edge Function named `delete-account` with JWT verification enabled. Configure the function's server-side secrets (`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`) in Supabase Function Secrets. The service role is used only inside that function to revoke the user's session and delete the authenticated user, which keeps account deletion compatible with Apple's account-deletion requirement without exposing an admin key to iOS.
+Deploy `supabase/functions/delete-account/index.ts` as an Edge Function named `delete-account` with JWT verification enabled. Also deploy `supabase/functions/apple-token/index.ts`; it exchanges the one-time native Apple authorization code for Apple's refresh token and stores only that refresh token server-side. The production migration `supabase/migrations/20260809105116_apple_provider_tokens.sql` and both functions are already deployed; repeat the commands below only when promoting a new version.
 
-The deployed project was verified through the Auth settings endpoint, the public `products` REST endpoint, a catalog response containing six rows, and an unauthenticated deletion request (which correctly returns `401`). Security advisors are clean. Performance advisors only report expected informational `unused_index` notices for indexes that have not yet been exercised by production traffic.
+Configure these secrets in Supabase Function Secrets (never in the iOS target):
+
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY` (or `SUPABASE_ANON_KEY`)
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `APPLE_CLIENT_ID` (`com.pickly.app.Pickly`)
+- Either `APPLE_CLIENT_SECRET`, or `APPLE_TEAM_ID`, `APPLE_KEY_ID`, and `APPLE_PRIVATE_KEY` containing the `.p8` key.
+
+The service role is used only inside the functions. Apple deletion revokes the stored refresh token first and only then deletes the Supabase user. If the Apple secrets, token row, or revoke call are unavailable, deletion returns an explicit error instead of silently deleting an account while leaving the Apple grant active.
+
+From the repository root, the deploy sequence is:
+
+```bash
+supabase link --project-ref bslsanvmkwjzbjerpzpi
+supabase db push
+supabase functions deploy apple-token
+supabase functions deploy delete-account
+supabase secrets set \
+  APPLE_CLIENT_ID=com.pickly.app.Pickly \
+  APPLE_TEAM_ID=... \
+  APPLE_KEY_ID=... \
+  APPLE_PRIVATE_KEY="$(cat /secure/path/AuthKey_XXXXXXXXXX.p8)"
+```
+
+Use `APPLE_CLIENT_SECRET` instead of the team/key/private-key trio only when you have a managed rotation process for that JWT; generated client secrets expire and must be rotated before deletion is needed.
+
+The deployed project was verified through the Auth settings endpoint, the public `products` REST endpoint (30 products and 17 alternative relations), and unauthenticated requests to both deletion/token functions (which correctly return `401`). Security advisors report the intentional no-policy state for the service-role-only token table. Leaked Password Protection is requested in `config.toml`; hosted Free projects may reject this setting because HaveIBeenPwned-backed protection is a Pro feature. Performance advisors report informational `unused_index` notices for indexes that have not yet been exercised by production traffic.
+
+## 8. Native Apple and Google sign-in
+
+Pickly uses native provider SDKs and exchanges their ID tokens for a Supabase session. The iOS app never stores an Apple private key, a Google client secret, a Supabase secret key, or a `service_role` key.
+
+### Sign in with Apple
+
+1. In Apple Developer, enable **Sign in with Apple** for App ID `com.pickly.app.Pickly`.
+2. In Xcode, keep `Pickly/Pickly.entitlements` attached to both Debug and Release. It contains the `com.apple.developer.applesignin` entitlement.
+3. In Supabase Dashboard → Authentication → Sign In / Providers → Apple:
+   - Enable Apple.
+   - Add `com.pickly.app.Pickly` under Client IDs.
+4. Native-only Apple sign-in can work without a Services ID, web redirect, or client secret for the initial login. The app sends the one-time native authorization code to the `apple-token` Edge Function after Supabase login; that function exchanges it with Apple and stores the refresh token for later deletion. Configure the server-side Apple client secret/private key before enabling production account deletion.
+
+The app requests name and email only when the user starts Apple sign-in. It sends a SHA-256 nonce to Apple and the original nonce to Supabase to prevent token replay. Apple supplies a person's name only on first authorization, so Pickly saves that name to Supabase user metadata when it is available.
+
+### Sign in with Google
+
+1. In Google Auth Platform, configure the consent screen with only `openid`, email, and profile scopes, plus Pickly's privacy-policy and terms URLs before release.
+2. Create two OAuth client IDs:
+   - **iOS** client with bundle ID `com.pickly.app.Pickly`.
+   - **Web application** client used as the ID-token server audience.
+3. In Supabase Dashboard → Authentication → Sign In / Providers → Google:
+   - Enable Google.
+   - Add the Web client ID first and the iOS client ID second under Client IDs.
+   - Keep nonce verification enabled. Pickly uses Google Sign-In's nonce API and passes the matching original nonce to Supabase.
+4. Copy `Docs/Supabase.local.xcconfig.example` values into the ignored `Config/Local.xcconfig`:
+   - `GOOGLE_IOS_CLIENT_ID`
+   - `GOOGLE_SERVER_CLIENT_ID` (the Web client ID)
+   - `GOOGLE_REVERSED_CLIENT_ID` (the reversed iOS client ID used as the callback URL scheme)
+
+Google OAuth client IDs are public identifiers, but keep environment-specific values in the ignored config. Never add a Google client secret to the app.
+
+### Verification
+
+Test Apple sign-in on a signed physical device. Test Google sign-in on both the simulator and a signed device. For each provider verify first sign-in, returning sign-in, cancellation, app relaunch/session refresh, sign-out, and in-app account deletion. Confirm the resulting user and identity under Supabase Authentication → Users, and confirm that no provider token or secret appears in app logs.

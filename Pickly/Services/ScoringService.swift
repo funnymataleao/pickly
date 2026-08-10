@@ -1,9 +1,9 @@
 import Foundation
 
-struct ScoringService {
-    nonisolated init() {}
+nonisolated struct ScoringService: Sendable {
+    init() {}
 
-    struct Result {
+    struct Result: Sendable {
         let score: Int?
         let summary: String
         let reasons: [String]
@@ -18,7 +18,8 @@ struct ScoringService {
         nutrition: Product.Nutrition,
         ingredients: [String],
         additivesTags: [String],
-        hasProductName: Bool = true
+        hasProductName: Bool = true,
+        category: String? = nil
     ) -> Result {
         if !hasProductName || nutrition.isIncomplete {
             return limitedDataResult(
@@ -28,34 +29,56 @@ struct ScoringService {
             )
         }
 
+        let sugarAssessment = nutrition.sugarAssessment(ingredients: ingredients)
+        let isBeverage = Self.isBeverageCategory(category)
         var score = 75
         var reasons: [String] = []
         var warnings: [String] = []
         var positives: [String] = []
         var forYouNotes: [String] = []
 
-        if let sugars = nutrition.addedSugars100g ?? nutrition.sugars100g {
-            let sugarLabel = nutrition.addedSugars100g == nil ? "sugar" : "added sugar"
+        if let sugars = sugarAssessment.value {
+            let sugarLabel = sugarAssessment.label
 
-            switch sugars {
-            case ..<5:
-                score += 3
-                positives.append("Low in \(sugarLabel) per 100g")
-            case 5..<12:
-                reasons.append("Moderate \(sugarLabel) level per 100g")
-            case 12..<22:
-                score -= 10
-                warnings.append("Contains more \(sugarLabel) than ideal for everyday use")
-                forYouNotes.append("May not be the best choice if you're reducing sugar")
-            default:
-                score -= 18
-                warnings.append("High \(sugarLabel) level per 100g")
-                forYouNotes.append("You might prefer a lower sugar option")
+            if isBeverage {
+                switch sugars {
+                case ..<5:
+                    score += 3
+                    positives.append("Low in \(sugarLabel) per 100g")
+                case 5..<8:
+                    reasons.append("Moderate \(sugarLabel) level per 100g")
+                case 8..<12:
+                    score -= 18
+                    warnings.append("Contains more \(sugarLabel) than ideal for everyday use")
+                    forYouNotes.append("You might prefer a lower sugar drink")
+                default:
+                    score -= 24
+                    warnings.append("High \(sugarLabel) level per 100g")
+                    forYouNotes.append("You might prefer a lower sugar drink")
+                }
+            } else {
+                switch sugars {
+                case ..<5:
+                    score += 3
+                    positives.append("Low in \(sugarLabel) per 100g")
+                case 5..<12:
+                    reasons.append("Moderate \(sugarLabel) level per 100g")
+                case 12..<22:
+                    score -= 10
+                    warnings.append("Contains more \(sugarLabel) than ideal for everyday use")
+                    forYouNotes.append("May not be the best choice if you're reducing sugar")
+                default:
+                    score -= 18
+                    warnings.append("High \(sugarLabel) level per 100g")
+                    forYouNotes.append("You might prefer a lower sugar option")
+                }
             }
 
-            if nutrition.addedSugars100g == nil {
-                reasons.append("Added sugar data is not available, so this uses total sugar")
+            if let explanation = sugarAssessment.explanation {
+                reasons.append(explanation)
             }
+        } else if let explanation = sugarAssessment.explanation {
+            warnings.append(explanation)
         }
 
         if let salt = nutrition.salt100g {
@@ -133,10 +156,13 @@ struct ScoringService {
 
         let confidence = confidenceLevel(
             nutrition: nutrition,
-            hasIngredients: !ingredients.isEmpty
+            hasIngredients: !ingredients.isEmpty,
+            hasDataConflict: sugarAssessment.hasDataConflict
         )
 
-        if confidence != "High" {
+        if sugarAssessment.hasDataConflict {
+            warnings.append("Conflicting nutrition data lowers confidence in this result")
+        } else if confidence != "High" {
             warnings.append("Nutrition data is incomplete, so confidence is lower")
         }
 
@@ -151,7 +177,7 @@ struct ScoringService {
             positives: unique(positives),
             forYouNotes: unique(forYouNotes),
             confidence: confidence,
-            nutritionSummary: nutritionSummary(for: nutrition)
+            nutritionSummary: nutritionSummary(for: nutrition, ingredients: ingredients)
         )
     }
 
@@ -182,25 +208,49 @@ struct ScoringService {
             positives: [],
             forYouNotes: [],
             confidence: "Low",
-            nutritionSummary: nutritionSummary(for: nutrition)
+            nutritionSummary: nutritionSummary(for: nutrition, ingredients: ingredients)
         )
     }
 
     private func confidenceLevel(
         nutrition: Product.Nutrition,
-        hasIngredients: Bool
+        hasIngredients: Bool,
+        hasDataConflict: Bool
     ) -> String {
         let knownNutritionFields = nutrition.knownFieldCount
+        let baseConfidence: String
 
         if knownNutritionFields >= 4 && hasIngredients {
-            return "High"
+            baseConfidence = "High"
+        } else if knownNutritionFields >= 2 {
+            baseConfidence = "Medium"
+        } else {
+            baseConfidence = "Low"
         }
 
-        if knownNutritionFields >= 2 {
-            return "Medium"
+        guard hasDataConflict else {
+            return baseConfidence
         }
 
-        return "Low"
+        switch baseConfidence {
+        case "High": return "Medium"
+        case "Medium": return "Low"
+        default: return "Low"
+        }
+    }
+
+    private static func isBeverageCategory(_ category: String?) -> Bool {
+        guard let category else { return false }
+
+        let normalized = category
+            .lowercased()
+            .replacingOccurrences(of: "-", with: " ")
+
+        return normalized.contains("beverage")
+            || normalized.contains("drink")
+            || normalized.contains("soft soda")
+            || normalized.contains("soft drink")
+            || normalized.contains("juice")
     }
 
     private func summary(for score: Int, confidence: String) -> String {
@@ -220,11 +270,15 @@ struct ScoringService {
         }
     }
 
-    private func nutritionSummary(for nutrition: Product.Nutrition) -> String {
+    private func nutritionSummary(
+        for nutrition: Product.Nutrition,
+        ingredients: [String]
+    ) -> String {
+        let sugarAssessment = nutrition.sugarAssessment(ingredients: ingredients)
         let values = [
             format(
-                nutrition.addedSugars100g ?? nutrition.sugars100g,
-                label: nutrition.addedSugars100g == nil ? "sugar" : "added sugar"
+                sugarAssessment.value,
+                label: sugarAssessment.label
             ),
             format(nutrition.salt100g, label: "salt"),
             format(nutrition.saturatedFat100g, label: "sat fat"),

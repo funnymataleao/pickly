@@ -42,6 +42,7 @@ enum PicklyColor {
     static let brandLemon = Color("PicklyBrandLemon")
 
     static let primary = Color("PicklyPrimary")
+    static let onBrandAccent = Color.black
     static let deepMarket = Color("PicklyDeepMarket")
     static let mint = Color("PicklyMint")
     static let citrus = Color("PicklyCitrus")
@@ -247,18 +248,13 @@ struct PicklyCardShadow: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .compositingGroup()
             .shadow(
-                color: colorScheme == .light ? Color.black.opacity(0.04) : .clear,
-                radius: 18,
+                color: colorScheme == .light
+                    ? Color(red: 0.15, green: 0.22, blue: 0.12).opacity(0.055)
+                    : Color.black.opacity(0.16),
+                radius: 12,
                 x: 0,
-                y: 8
-            )
-            .shadow(
-                color: colorScheme == .light ? Color.black.opacity(0.014) : .clear,
-                radius: 3,
-                x: 0,
-                y: 1
+                y: 4
             )
     }
 }
@@ -281,6 +277,41 @@ struct PicklyCardSurface: ViewModifier {
                         .stroke(stroke, lineWidth: 1)
                 }
             }
+    }
+}
+
+/// A native Liquid Glass surface for interactive cards.
+///
+/// The opaque fallback is intentional: users who reduce transparency should
+/// get the same hierarchy and contrast without a translucent material.
+struct PicklyGlassCardSurface: ViewModifier {
+    let cornerRadius: CGFloat
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content
+                .background(
+                    PicklyColor.card,
+                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(PicklyColor.stroke.opacity(0.45), lineWidth: 1)
+                }
+                .picklyCardShadow()
+        } else {
+            content
+                // Draw the shadow on an independent shape. Applying it after
+                // Liquid Glass lets the glass compositing pass clip the blur.
+                .background {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(PicklyColor.card)
+                        .picklyCardShadow()
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+        }
     }
 }
 
@@ -307,6 +338,10 @@ extension View {
         stroke: Color? = nil
     ) -> some View {
         modifier(PicklyCardSurface(cornerRadius: cornerRadius, fill: fill, stroke: stroke))
+    }
+
+    func picklyGlassCardSurface(cornerRadius: CGFloat = 20) -> some View {
+        modifier(PicklyGlassCardSurface(cornerRadius: cornerRadius))
     }
 
     func picklyListCardRow(top: CGFloat = 8, bottom: CGFloat = 14) -> some View {

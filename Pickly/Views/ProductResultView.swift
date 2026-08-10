@@ -41,6 +41,7 @@ struct ProductResultView: View {
             preferences: .prototype
         )
     }
+    .environmentObject(SubscriptionStore(loadProducts: false))
 }
 
 #Preview("Limited data") {
@@ -71,4 +72,5 @@ struct ProductResultView: View {
             preferences: .prototype
         )
     }
+    .environmentObject(SubscriptionStore(loadProducts: false))
 }

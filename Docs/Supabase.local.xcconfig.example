@@ -1,5 +1,11 @@
-// Copy to a local, untracked xcconfig and attach it to the Pickly target.
+// Copy to Config/Local.xcconfig. Base.xcconfig includes it automatically.
 // Never commit real project values or any service_role key.
+// Release builds fail early when any required public runtime value is missing.
 
 SUPABASE_URL = https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_PUBLISHABLE_KEY = sb_publishable_YOUR_KEY
+
+// Google OAuth client IDs are public identifiers, not client secrets.
+GOOGLE_IOS_CLIENT_ID = PASTE_GOOGLE_IOS_CLIENT_ID
+GOOGLE_SERVER_CLIENT_ID = PASTE_GOOGLE_WEB_CLIENT_ID
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.PASTE_GOOGLE_IOS_CLIENT_ID

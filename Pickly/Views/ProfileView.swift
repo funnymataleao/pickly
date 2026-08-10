@@ -6,6 +6,7 @@ struct ProfileView: View {
     @ObservedObject var authStore: AuthStore
     var onAccountDeleted: () -> Void = {}
 
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @State private var activeSheet: ProfileSheet?
 
     var body: some View {
@@ -31,15 +32,26 @@ struct ProfileView: View {
                         icon: .system("person.badge.key"),
                         tone: .account,
                         title: authStore.currentEmail == nil ? "Sign in" : "Account",
-                        subtitle: authStore.currentEmail ?? "Create an account with email"
+                        subtitle: authStore.currentEmail ?? "Continue with Apple, Google, or email"
                     )
                 }
                 .buttonStyle(.plain)
+
+                if subscriptionStore.isPlus {
+                    Link(destination: URL(string: "itms-apps://apps.apple.com/account/subscriptions")!) {
+                        SettingsActionRow(
+                            icon: .system("arrow.up.right.square"),
+                            tone: .pro,
+                            title: "Manage Subscription",
+                            subtitle: "Open Apple ID subscription settings"
+                        )
+                    }
+                }
             }
 
             Section("Preferences") {
                 PreferenceToggleRow(
-                    icon: .system("cube.transparent"),
+                    icon: .system(GroceryGoal.lowSugar.preferenceIcon),
                     tone: .sugar,
                     title: "Low sugar",
                     subtitle: "Prefer products with less added sugar",
@@ -47,7 +59,7 @@ struct ProfileView: View {
                 )
 
                 PreferenceToggleRow(
-                    icon: .system("drop"),
+                    icon: .system(GroceryGoal.lowSodium.preferenceIcon),
                     tone: .sodium,
                     title: "Low sodium",
                     subtitle: "Prefer lower-sodium options",
@@ -55,7 +67,7 @@ struct ProfileView: View {
                 )
 
                 PreferenceToggleRow(
-                    icon: .system("leaf"),
+                    icon: .system(GroceryGoal.sensitiveDigestion.preferenceIcon),
                     tone: .digestion,
                     title: "Gentler picks",
                     subtitle: "Prefer simpler options that may feel easier to digest",
@@ -63,7 +75,7 @@ struct ProfileView: View {
                 )
 
                 PreferenceToggleRow(
-                    icon: .system("carrot"),
+                    icon: .system(GroceryGoal.vegetarian.preferenceIcon),
                     tone: .vegetarian,
                     title: "Vegetarian",
                     subtitle: "Prioritize vegetarian-friendly products",
@@ -71,7 +83,7 @@ struct ProfileView: View {
                 )
 
                 PreferenceToggleRow(
-                    icon: .system("allergens"),
+                    icon: .system(GroceryGoal.vegan.preferenceIcon),
                     tone: .vegan,
                     title: "Vegan",
                     subtitle: "Prefer products without animal ingredients",
@@ -79,7 +91,7 @@ struct ProfileView: View {
                 )
 
                 PreferenceToggleRow(
-                    icon: .text("GF"),
+                    icon: .system(GroceryGoal.glutenFree.preferenceIcon),
                     tone: .glutenFree,
                     title: "Gluten-free",
                     subtitle: "Flag products that may not fit this preference",
@@ -87,7 +99,7 @@ struct ProfileView: View {
                 )
 
                 PreferenceToggleRow(
-                    icon: .system("cup.and.saucer"),
+                    icon: .system(GroceryGoal.lactoseFree.preferenceIcon),
                     tone: .lactoseFree,
                     title: "Lactose-free",
                     subtitle: "Flag products that may not fit this preference",
@@ -102,8 +114,10 @@ struct ProfileView: View {
                     SettingsActionRow(
                         icon: .system("sparkles"),
                         tone: .pro,
-                        title: "Pickly Pro",
-                        subtitle: "Advanced alternatives (placeholder)"
+                        title: "Pickly Plus",
+                        subtitle: subscriptionStore.isPlus
+                            ? "Your subscription is active"
+                            : "Compare more products and alternatives"
                     )
                 }
                 .buttonStyle(.plain)
@@ -121,7 +135,7 @@ struct ProfileView: View {
                     icon: .system("lock.shield"),
                     tone: .privacy,
                     title: "Personal data",
-                    subtitle: "Saved products and preferences stay on this device in the MVP."
+                    subtitle: "Saved products and preferences stay on this device."
                 )
 
                 Button {
@@ -145,12 +159,12 @@ struct ProfileView: View {
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .account:
-                AccountEmailAuthView(
+                AccountAuthView(
                     authStore: authStore,
                     onAccountDeleted: onAccountDeleted
                 )
             case .paywall:
-                PaywallPlaceholderView()
+                PicklyPaywallView()
             case .privacyPolicy:
                 PrivacyPolicyView()
             }
@@ -170,22 +184,16 @@ private struct ProfileSummaryCard: View {
     let savedCount: Int
     let historyCount: Int
     let accountEmail: String?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 40))
-                    .foregroundStyle(PicklyColor.primary)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Your Pickly")
-                        .font(.title3.bold())
-
-                    Text(accountEmail ?? "Calm grocery guidance, tuned to you.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+            if dynamicTypeSize.isAccessibilitySize {
+                summaryContent
+            } else {
+                HStack(spacing: 12) {
+                    summaryIcon
+                    summaryText
                 }
             }
 
@@ -198,6 +206,34 @@ private struct ProfileSummaryCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .picklyCardSurface(cornerRadius: 20)
         .accessibilityElement(children: .combine)
+    }
+
+    private var summaryContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            summaryIcon
+            summaryText
+        }
+    }
+
+    private var summaryIcon: some View {
+        PicklyIconImage(
+            systemName: "person.crop.circle.fill",
+            size: 40,
+            scalesWithDynamicType: false
+        )
+        .foregroundStyle(PicklyColor.primary)
+    }
+
+    private var summaryText: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Your Pickly")
+                .font(.title3.bold())
+
+            Text(accountEmail ?? "Calm grocery guidance, tuned to you.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+        }
     }
 }
 
@@ -262,8 +298,7 @@ private struct SettingsActionRow: View {
 
             Spacer(minLength: 8)
 
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
+            PicklyIconImage(systemName: "chevron.right", size: 12)
                 .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
@@ -334,8 +369,7 @@ private struct SettingsIconView: View {
     private var iconContent: some View {
         switch icon {
         case .system(let name):
-            Image(systemName: name)
-                .font(.body.weight(.semibold))
+            PicklyIconImage(systemName: name, size: 18)
         case .text(let value):
             Text(value)
                 .font(.caption.weight(.black))
@@ -374,44 +408,59 @@ private enum AccountFocusedField {
     case password
 }
 
-private struct AccountEmailAuthView: View {
+struct AccountAuthView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var authStore: AuthStore
     let onAccountDeleted: () -> Void
+    var showsSocialProviders = true
 
     @State private var mode: EmailAuthMode = .create
     @State private var email = ""
     @State private var password = ""
     @State private var showDeleteConfirmation = false
+    @State private var isDeletingAccount = false
+    @State private var deletionErrorMessage: String?
     @FocusState private var focusedField: AccountFocusedField?
 
     private var canSubmit: Bool {
-        authStore.isConfigured && !authStore.isWorking && email.contains("@") && password.count >= 6
+        authStore.isConfigured && !authStore.isWorking && email.contains("@") && password.count >= 8
     }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    AccountHero()
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        AccountHero(showsSocialProviders: showsSocialProviders)
 
-                    if authStore.isRestoringSession {
-                        ProgressView("Restoring account session...")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        switch authStore.state {
-                        case .signedOut:
-                            emailForm
-                        case .signedIn:
-                            signedInCard
-                        case .needsEmailConfirmation(let email):
-                            confirmationCard(email: email)
+                        if authStore.isRestoringSession {
+                            ProgressView("Restoring account session...")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            switch authStore.state {
+                            case .signedOut:
+                                emailForm
+                            case .signedIn:
+                                signedInCard
+                            case .needsEmailConfirmation(let email):
+                                confirmationCard(email: email)
+                            case .recoveringPassword:
+                                ProgressView("Preparing password reset…")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                     }
+                    .frame(
+                        width: max(
+                            0,
+                            geometry.size.width - PicklyLayout.screenHorizontalPadding * 2
+                        ),
+                        alignment: .leading
+                    )
+                    .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
                 }
-                .padding(20)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollDismissesKeyboard(.interactively)
             .background(PicklyColor.background)
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
@@ -422,11 +471,28 @@ private struct AccountEmailAuthView: View {
                     }
                 }
             }
+            .task {
+                await authStore.restoreSessionIfNeeded()
+            }
         }
     }
 
     private var emailForm: some View {
         VStack(alignment: .leading, spacing: 18) {
+            if showsSocialProviders {
+                AuthProviderButtons(authStore: authStore)
+
+                HStack(spacing: 12) {
+                    Divider()
+                    Text("or continue with email")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                    Divider()
+                }
+                .accessibilityElement(children: .combine)
+            }
+
             Picker("Account mode", selection: $mode) {
                 ForEach(EmailAuthMode.allCases) { mode in
                     Text(mode.title).tag(mode)
@@ -450,7 +516,7 @@ private struct AccountEmailAuthView: View {
 
                 AccountTextField(
                     title: "Password",
-                    prompt: "At least 6 characters",
+                    prompt: "At least 8 characters",
                     text: $password,
                     contentType: .password,
                     keyboardType: .default,
@@ -461,6 +527,26 @@ private struct AccountEmailAuthView: View {
                 ) {
                     submit()
                 }
+            }
+
+            if mode == .signIn {
+                Button("Forgot password?") {
+                    focusedField = nil
+                    Task {
+                        await authStore.requestPasswordReset(
+                            email: email.trimmingCharacters(in: .whitespacesAndNewlines)
+                        )
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(PicklyColor.primary)
+                .disabled(
+                    !authStore.isConfigured
+                        || authStore.isWorking
+                        || !email.contains("@")
+                )
+                .frame(minHeight: 44, alignment: .leading)
+                .accessibilityHint("Sends a password reset link to the entered email address.")
             }
 
             if !authStore.isConfigured {
@@ -474,7 +560,7 @@ private struct AccountEmailAuthView: View {
                     text: statusMessage
                 )
             } else {
-                Text("Account access is optional. Saved products and preferences stay on this device in the MVP.")
+                Text("Account access is optional. Saved products and preferences stay on this device.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -488,8 +574,7 @@ private struct AccountEmailAuthView: View {
                         ProgressView()
                             .tint(.black)
                     } else {
-                        Image(systemName: "envelope.fill")
-                            .font(.body.weight(.semibold))
+                        PicklyIconImage(systemName: "envelope.fill", size: 18)
                     }
 
                     Text(authStore.isWorking ? "Working..." : mode.buttonTitle)
@@ -526,11 +611,21 @@ private struct AccountEmailAuthView: View {
             }
             .buttonStyle(AccountSecondaryButtonStyle())
 
-            Button("Delete account", role: .destructive) {
+            Button(role: .destructive) {
+                deletionErrorMessage = nil
                 showDeleteConfirmation = true
+            } label: {
+                HStack(spacing: 10) {
+                    if isDeletingAccount {
+                        ProgressView()
+                            .tint(.red)
+                    }
+
+                    Text(isDeletingAccount ? "Deleting account…" : "Delete account")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .disabled(authStore.isWorking)
+            .disabled(authStore.isWorking || isDeletingAccount)
             .confirmationDialog(
                 "Delete your Pickly account?",
                 isPresented: $showDeleteConfirmation,
@@ -538,16 +633,37 @@ private struct AccountEmailAuthView: View {
             ) {
                 Button("Delete Account", role: .destructive) {
                     Task {
+                        isDeletingAccount = true
+                        deletionErrorMessage = nil
+                        defer { isDeletingAccount = false }
+
                         if await authStore.deleteAccount() {
                             onAccountDeleted()
                             dismiss()
+                        } else {
+                            deletionErrorMessage = authStore.statusMessage
+                                ?? "Your account could not be deleted. Please try again."
                         }
                     }
                 }
 
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This permanently removes your account and server-side profile data. Local saved products will also be cleared.")
+                Text("This permanently removes your account and server-side profile data. Local saved products will also be cleared. App Store subscriptions are separate and must be canceled in Apple ID settings.")
+            }
+
+            if let errorMessage = deletionErrorMessage {
+                AccountStatusMessage(
+                    icon: "exclamationmark.triangle.fill",
+                    text: errorMessage
+                )
+
+                Button("Try again") {
+                    deletionErrorMessage = nil
+                    showDeleteConfirmation = true
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(PicklyColor.primary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -596,22 +712,167 @@ private struct AccountEmailAuthView: View {
     }
 }
 
+private enum PasswordRecoveryField {
+    case password
+    case confirmation
+}
+
+struct PasswordRecoveryView: View {
+    @ObservedObject var authStore: AuthStore
+
+    @State private var password = ""
+    @State private var confirmation = ""
+    @State private var validationMessage: String?
+    @FocusState private var focusedField: PasswordRecoveryField?
+
+    private var canSubmit: Bool {
+        password.count >= 8
+            && password == confirmation
+            && !authStore.isWorking
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    AccountStatusIcon(systemName: "key.fill")
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Choose a new password")
+                            .font(.largeTitle.bold())
+                            .accessibilityAddTraits(.isHeader)
+
+                        Text("Use at least 8 characters. After saving, you’ll stay signed in on this device.")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    VStack(spacing: 14) {
+                        recoveryField(
+                            title: "New password",
+                            prompt: "At least 8 characters",
+                            text: $password,
+                            focus: .password,
+                            submitLabel: .next
+                        ) {
+                            focusedField = .confirmation
+                        }
+
+                        recoveryField(
+                            title: "Confirm password",
+                            prompt: "Enter it again",
+                            text: $confirmation,
+                            focus: .confirmation,
+                            submitLabel: .done
+                        ) {
+                            submit()
+                        }
+                    }
+
+                    if let message = validationMessage ?? authStore.statusMessage {
+                        AccountStatusMessage(icon: "info.circle.fill", text: message)
+                    }
+
+                    Button(action: submit) {
+                        HStack(spacing: 10) {
+                            if authStore.isWorking {
+                                ProgressView().tint(.black)
+                            }
+                            Text(authStore.isWorking ? "Saving…" : "Update password")
+                                .font(.headline.weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(AccountPrimaryButtonStyle())
+                    .disabled(!canSubmit)
+                }
+                .padding(PicklyLayout.screenHorizontalPadding)
+            }
+            .background(PicklyColor.background)
+            .navigationTitle("Reset password")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        Task { await authStore.cancelPasswordRecovery() }
+                    }
+                }
+            }
+            .interactiveDismissDisabled(authStore.isWorking)
+        }
+    }
+
+    private func recoveryField(
+        title: String,
+        prompt: String,
+        text: Binding<String>,
+        focus: PasswordRecoveryField,
+        submitLabel: SubmitLabel,
+        onSubmit: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+
+            SecureField(prompt, text: text)
+                .textContentType(.newPassword)
+                .focused($focusedField, equals: focus)
+                .submitLabel(submitLabel)
+                .onSubmit(onSubmit)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 52)
+                .background(PicklyColor.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(PicklyColor.stroke.opacity(0.6), lineWidth: 1)
+                }
+        }
+    }
+
+    private func submit() {
+        focusedField = nil
+        validationMessage = nil
+
+        guard password.count >= 8 else {
+            validationMessage = "Use at least 8 characters."
+            return
+        }
+        guard password == confirmation else {
+            validationMessage = "Passwords don’t match."
+            return
+        }
+
+        Task {
+            _ = await authStore.updatePassword(password)
+        }
+    }
+}
+
 private struct AccountHero: View {
+    let showsSocialProviders: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             AccountStatusIcon(systemName: "person.badge.key.fill")
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Create your Pickly account")
-                    .font(.title.bold())
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(showsSocialProviders ? "Sign in to Pickly" : "Continue with email")
+                    .font(dynamicTypeSize.isAccessibilitySize ? .title2.bold() : .title.bold())
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text("Account access is optional. Your local grocery data stays on this device.")
+                Text(
+                    showsSocialProviders
+                        ? "Use Apple, Google, or email. Account access is optional, and your local grocery data stays on this device."
+                        : "Create an account or sign in with your email and password."
+                )
                     .font(.body)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -619,8 +880,11 @@ private struct AccountStatusIcon: View {
     let systemName: String
 
     var body: some View {
-        Image(systemName: systemName)
-            .font(.system(size: 46, weight: .semibold))
+        PicklyIconImage(
+            systemName: systemName,
+            size: 46,
+            scalesWithDynamicType: false
+        )
             .foregroundStyle(PicklyColor.primary)
             .accessibilityHidden(true)
     }
@@ -692,8 +956,7 @@ private struct AccountStatusMessage: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon)
-                .font(.body.weight(.semibold))
+            PicklyIconImage(systemName: icon, size: 18)
                 .foregroundStyle(PicklyColor.primary)
 
             Text(text)
@@ -716,8 +979,8 @@ private struct AccountPrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .frame(minHeight: 56)
-            .padding(.horizontal, 18)
+            .frame(minHeight: 52)
+            .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
             .foregroundStyle(isEnabled ? Color.black : Color.secondary)
             .background(
                 isEnabled ? PicklyColor.primary : PicklyColor.stroke.opacity(0.7),
@@ -734,7 +997,7 @@ private struct AccountSecondaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.headline.weight(.semibold))
             .frame(maxWidth: .infinity, minHeight: 52)
-            .padding(.horizontal, 18)
+            .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
             .foregroundStyle(PicklyColor.primary)
             .background(PicklyColor.stroke.opacity(0.45), in: Capsule())
             .opacity(configuration.isPressed ? 0.82 : 1)
@@ -750,4 +1013,5 @@ private struct AccountSecondaryButtonStyle: ButtonStyle {
             authStore: AuthStore()
         )
     }
+    .environmentObject(SubscriptionStore(loadProducts: false))
 }

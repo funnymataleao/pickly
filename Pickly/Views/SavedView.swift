@@ -4,6 +4,7 @@ struct SavedView: View {
     let productService: any ProductService
     @ObservedObject var savedStore: SavedProductsStore
     let preferences: UserPreferences
+    var onScanAnotherProduct: (() -> Void)? = nil
 
     @State private var selectedList = SavedList.saved
     @State private var selectedProduct: Product?
@@ -30,47 +31,47 @@ struct SavedView: View {
     }
 
     var body: some View {
-        List {
-            PicklyContentHeader(title: "Saved")
-                .picklyContentHeaderRow()
-
-            Section {
-                Picker("List", selection: $selectedList) {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                Picker("Saved products list", selection: $selectedList) {
                     ForEach(SavedList.allCases) { list in
-                        Text(list.title).tag(list)
+                        Text(list.title)
+                            .tag(list)
                     }
                 }
                 .pickerStyle(.segmented)
-                .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
-            }
-            .listRowBackground(Color.clear)
+                .accessibilityHint("Switches between saved products and product history.")
+                .padding(.bottom, 4)
 
-            if visibleProducts.isEmpty {
-                SavedEmptyStateCard(
-                    systemImage: selectedList.emptySystemImage,
-                    title: selectedList.emptyTitle,
-                    message: selectedList.emptyDescription
-                )
-                .picklyListCardRow(top: 12, bottom: 14)
-            } else {
-                Section(selectedList.title) {
-                    ProductRowsCard(
-                        products: visibleProducts,
-                        isSaved: { product in
-                            savedStore.isSaved(product)
-                        },
-                        accessibilityLabel: accessibilityLabel(for:),
-                        onSelect: { product in
-                            selectedProduct = product
-                        }
+                if visibleProducts.isEmpty {
+                    SavedEmptyStateCard(
+                        systemImage: selectedList.emptySystemImage,
+                        title: selectedList.emptyTitle,
+                        message: selectedList.emptyDescription
                     )
-                    .picklyListCardRow()
+                    .padding(.top, 8)
+                } else {
+                    ForEach(visibleProducts) { product in
+                        ProductSummaryCard(
+                            product: product,
+                            reason: summaryReason(for: product),
+                            isSaved: savedStore.isSaved(product),
+                            onToggleSave: {
+                                savedStore.toggle(product)
+                            },
+                            accessibilityLabel: accessibilityLabel(for: product),
+                            onSelect: {
+                                selectedProduct = product
+                            }
+                        )
+                    }
                 }
             }
+            .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
+            .padding(.top, 16)
+            .padding(.bottom, 28)
         }
-        .listStyle(.insetGrouped)
-        .contentMargins(.top, PicklyLayout.rootTopPadding, for: .scrollContent)
-        .scrollContentBackground(.hidden)
+        .scrollClipDisabled()
         .background(PicklyColor.background)
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $selectedProduct) { product in
@@ -78,7 +79,8 @@ struct SavedView: View {
                 product: product,
                 productService: productService,
                 savedStore: savedStore,
-                preferences: preferences
+                preferences: preferences,
+                onScanAnotherProduct: onScanAnotherProduct
             )
         }
         .navigationDestination(for: Product.self) { product in
@@ -86,7 +88,8 @@ struct SavedView: View {
                 product: product,
                 productService: productService,
                 savedStore: savedStore,
-                preferences: preferences
+                preferences: preferences,
+                onScanAnotherProduct: onScanAnotherProduct
             )
         }
     }
@@ -98,6 +101,30 @@ struct SavedView: View {
 
         return "\(product.name), \(product.brand), Limited data"
     }
+
+    private func summaryReason(for product: Product) -> String {
+        if product.isLimitedData {
+            return "Limited data"
+        }
+
+        if (product.sugarForScoring ?? .greatestFiniteMagnitude) <= 5 {
+            return product.sugarLabel == "added sugar" ? "Low added sugar" : "Low sugar"
+        }
+
+        if (product.nutrition.salt100g ?? .greatestFiniteMagnitude) <= 0.8 {
+            return "Lower salt"
+        }
+
+        if (product.nutrition.proteins100g ?? 0) >= 8 {
+            return "Good protein"
+        }
+
+        if !product.ingredients.isEmpty && product.ingredients.count <= 4 {
+            return "Short ingredients"
+        }
+
+        return product.positives.first ?? product.verdict
+    }
 }
 
 private struct SavedEmptyStateCard: View {
@@ -107,8 +134,11 @@ private struct SavedEmptyStateCard: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.system(size: 34, weight: .semibold))
+            PicklyIconImage(
+                systemName: systemImage,
+                size: 34,
+                scalesWithDynamicType: false
+            )
                 .foregroundStyle(PicklyColor.primary)
                 .frame(width: 56, height: 56)
                 .background(PicklyColor.mint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -183,4 +213,5 @@ private enum SavedList: String, CaseIterable, Identifiable {
             preferences: .prototype
         )
     }
+    .environmentObject(SubscriptionStore(loadProducts: false))
 }

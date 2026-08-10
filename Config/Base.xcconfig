@@ -1,0 +1,9 @@
+// Public runtime configuration is supplied by CI or an ignored Local.xcconfig.
+// Empty defaults keep clean checkouts buildable without embedding private values.
+SUPABASE_URL =
+SUPABASE_PUBLISHABLE_KEY =
+GOOGLE_IOS_CLIENT_ID =
+GOOGLE_SERVER_CLIENT_ID =
+GOOGLE_REVERSED_CLIENT_ID =
+
+#include? "Local.xcconfig"

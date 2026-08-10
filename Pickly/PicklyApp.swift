@@ -9,9 +9,23 @@ import SwiftUI
 
 @main
 struct PicklyApp: App {
+    @StateObject private var subscriptionStore = SubscriptionStore()
+    @StateObject private var authStore = AuthStore()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(authStore: authStore)
+                .environmentObject(subscriptionStore)
+                .onOpenURL { url in
+                    Task {
+                        if !(await authStore.handleIncomingURL(url)) {
+                            GoogleSignInProvider.handle(url: url)
+                        }
+                    }
+                }
+                .task {
+                    await subscriptionStore.start()
+                }
         }
     }
 }

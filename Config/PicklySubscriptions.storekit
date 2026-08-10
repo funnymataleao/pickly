@@ -1,0 +1,93 @@
+{
+  "appPolicies" : {
+    "eula" : "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "Pickly helps you compare grocery products using available product data. It does not provide medical advice.",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "PICKLYPLUS",
+  "nonRenewingSubscriptions" : [
+  ],
+  "products" : [
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "PRT",
+    "_storeKitErrors" : [
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "PICKLYPLUS",
+      "localizations" : [
+        {
+          "description" : "Compare more grocery products with Pickly Plus.",
+          "displayName" : "Pickly Plus",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "Pickly Plus",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+          ],
+          "codeOffers" : [
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "PICKLYMONTHLY",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Pickly Plus monthly access.",
+              "displayName" : "Pickly Plus Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.pickly.plus.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pickly Plus Monthly",
+          "subscriptionGroupID" : "PICKLYPLUS",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+          ]
+        },
+        {
+          "adHocOffers" : [
+          ],
+          "codeOffers" : [
+          ],
+          "displayPrice" : "29.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "PICKLYANNUAL",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Pickly Plus annual access.",
+              "displayName" : "Pickly Plus Annual",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.pickly.plus.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Pickly Plus Annual",
+          "subscriptionGroupID" : "PICKLYPLUS",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

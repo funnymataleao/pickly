@@ -10,23 +10,35 @@ struct ResultScreen: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
     @State private var isShowingSkeleton = true
     @State private var imageRevealed = false
-    @State private var scoreProgress = 0.0
     @State private var displayedScore = 0
     @State private var showVerdict = false
     @State private var visibleInsightCount = 0
-    @State private var scrollOffset = 0.0
+    @State private var showStickyHeader = false
     @State private var saveBounce = false
-    @State private var showProductRequest = false
+    @State private var showPaywall = false
+
+    // One native content grid for the image, verdict, and every detail card.
+    private let contentHorizontalInset = PicklyLayout.screenHorizontalPadding
 
     private var alternatives: [Product] {
         productService.alternatives(for: product)
     }
 
+    private var alternativePreviewProducts: [Product] {
+        return AlternativePreviewBuilder.products(
+            for: product,
+            alternatives: alternatives,
+            catalog: productService.products,
+            limit: 30
+        )
+    }
+
     private var shouldShowStickyHeader: Bool {
-        scrollOffset < -260 && !isShowingSkeleton
+        showStickyHeader && !isShowingSkeleton
     }
 
     private var shouldShowDataConfidence: Bool {
@@ -46,7 +58,6 @@ struct ResultScreen: View {
                         ResultHero(
                             product: product,
                             imageRevealed: imageRevealed,
-                            scoreProgress: scoreProgress,
                             displayedScore: displayedScore,
                             showVerdict: showVerdict
                         )
@@ -68,67 +79,74 @@ struct ResultScreen: View {
 
                         if shouldShowDataConfidence {
                             DataConfidenceCard(
-                                product: product,
-                                onAddPhotos: showRequestProduct,
                                 onScanAgain: scanAnotherProduct
                             )
                         }
 
                         NutritionSummary(product: product)
 
-                        RecommendationsCard(recommendations: product.recommendations)
+                        if !product.recommendations.isEmpty {
+                            RecommendationsCard(recommendations: product.recommendations)
+                        }
 
                         AlternativesResultSection(
                             product: product,
                             alternatives: alternatives,
-                            productService: productService,
-                            savedStore: savedStore
+                            previewProducts: alternativePreviewProducts,
+                            savedStore: savedStore,
+                            isPlus: subscriptionStore.isPlus,
+                            onUpgrade: { showPaywall = true }
                         )
 
                         ResultActions(
                             isSaved: savedStore.isSaved(product),
                             saveBounce: saveBounce,
                             onScanAnotherProduct: scanAnotherProduct,
-                            onSave: toggleSave,
-                            onRequestProduct: showRequestProduct
+                            onSave: toggleSave
                         )
                         .padding(.top, 4)
                         .padding(.bottom, 24)
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, contentHorizontalInset)
                     .padding(.top, 12)
                 }
-                .scrollClipDisabled()
                 .coordinateSpace(name: "resultScroll")
                 .onPreferenceChange(ResultScrollOffsetPreferenceKey.self) { value in
-                    scrollOffset = value
+                    let shouldShow = value < -190
+                    guard shouldShow != showStickyHeader else { return }
+                    showStickyHeader = shouldShow
                 }
                 .transition(.opacity)
             }
 
-            if shouldShowStickyHeader {
-                StickyResultHeader(
-                    product: product,
-                    isSaved: savedStore.isSaved(product),
-                    saveBounce: saveBounce,
-                    onSave: toggleSave
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .zIndex(1)
+        }
+        .background(PicklyColor.background)
+        .navigationTitle(shouldShowStickyHeader ? product.resultDisplayName : "")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: toggleSave) {
+                    PicklyIconImage(
+                        systemName: savedStore.isSaved(product) ? "bookmark.fill" : "bookmark",
+                        size: 19
+                    )
+                    .foregroundStyle(savedStore.isSaved(product) ? PicklyColor.primary : .primary)
+                    .frame(width: 36, height: 36)
+                    .scaleEffect(saveBounce ? 1.14 : 1)
+                }
+                .accessibilityLabel(savedStore.isSaved(product) ? "Saved" : "Save result")
+                .accessibilityHint("Adds or removes this product from Saved.")
             }
         }
-        .animation(.easeOut(duration: 0.22), value: shouldShowStickyHeader)
-        .background(PicklyColor.background)
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        // Product details are a focused drill-down. Keeping the tab bar visible
+        // here obscures the first result card and competes with the native back action.
+        .toolbar(.hidden, for: .tabBar)
         .task(id: product.id) {
             savedStore.recordView(product)
             await runRevealSequence()
         }
-        .sheet(isPresented: $showProductRequest) {
-            ProductRequestPlaceholderView(barcode: product.barcode)
+        .sheet(isPresented: $showPaywall) {
+            PicklyPaywallView(entryPoint: .alternatives)
         }
     }
 
@@ -148,12 +166,9 @@ struct ResultScreen: View {
         resetRevealState()
 
         let finalScore = product.score ?? 0
-        let finalProgress = product.isLimitedData ? 0 : Double(finalScore) / 100
-
         if reduceMotion {
             isShowingSkeleton = false
             imageRevealed = true
-            scoreProgress = finalProgress
             displayedScore = finalScore
             showVerdict = true
             visibleInsightCount = product.keyInsights.count
@@ -179,10 +194,6 @@ struct ResultScreen: View {
             visibleInsightCount = product.keyInsights.count
         }
 
-        withAnimation(.easeOut(duration: 0.42)) {
-            scoreProgress = finalProgress
-        }
-
         guard !Task.isCancelled else { return }
         playAnalysisHaptic()
         await countScore(to: finalScore)
@@ -192,7 +203,6 @@ struct ResultScreen: View {
     private func resetRevealState() {
         isShowingSkeleton = true
         imageRevealed = false
-        scoreProgress = 0
         displayedScore = 0
         showVerdict = false
         visibleInsightCount = 0
@@ -240,13 +250,12 @@ struct ResultScreen: View {
 
     private func scanAnotherProduct() {
         playTapHaptic()
-        onScanAnotherProduct?()
         dismiss()
-    }
 
-    private func showRequestProduct() {
-        playTapHaptic()
-        showProductRequest = true
+        Task { @MainActor in
+            await Task.yield()
+            onScanAnotherProduct?()
+        }
     }
 
     private func playAnalysisHaptic() {
@@ -268,7 +277,7 @@ private struct SampleDataNotice: View {
             Text("Sample product data for this prototype")
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
-            Image(systemName: "flask")
+            PicklyIconImage(systemName: "flask")
         }
         .font(.footnote.weight(.medium))
         .foregroundStyle(.secondary)
@@ -290,7 +299,7 @@ private struct ResultSkeletonView: View {
             VStack(alignment: .leading, spacing: 18) {
                 RoundedRectangle(cornerRadius: 30, style: .continuous)
                     .fill(.secondary.opacity(0.12))
-                    .frame(height: 360)
+                    .frame(height: 316)
 
                 ForEach(0..<4, id: \.self) { index in
                     VStack(alignment: .leading, spacing: 12) {
@@ -304,7 +313,8 @@ private struct ResultSkeletonView: View {
                     }
                 }
             }
-            .padding(16)
+            .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
+            .padding(.vertical, 16)
         }
         .scrollClipDisabled()
         .background(PicklyColor.background)

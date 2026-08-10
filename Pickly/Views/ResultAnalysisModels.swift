@@ -137,11 +137,11 @@ extension Product {
 
         switch score {
         case 85...100:
-            return "Good choice"
+            return "Great choice"
         case 70..<85:
-            return "Solid option"
+            return "Good choice"
         case 50..<70:
-            return "Better as an occasional option"
+            return "Okay for occasionally"
         default:
             return "Worth comparing"
         }
@@ -279,11 +279,6 @@ extension Product {
             items.append("Prefer fewer additives")
         }
 
-        if items.isEmpty {
-            items.append("Compare sugar and sodium")
-            items.append("Pick the simpler option")
-        }
-
         return Array(items.prefix(3))
     }
 
@@ -357,7 +352,7 @@ extension Product {
         guard let salt = nutrition.salt100g else {
             return ProductInsight(
                 id: "sodium",
-                icon: "drop.fill",
+                icon: "drop",
                 title: "Sodium",
                 status: "Limited",
                 value: "Not available",
@@ -370,7 +365,7 @@ extension Product {
         case ..<0.3:
             return ProductInsight(
                 id: "sodium",
-                icon: "drop.fill",
+                icon: "drop",
                 title: "Sodium",
                 status: "Low",
                 value: "\(formattedGrams(salt)) salt",
@@ -380,7 +375,7 @@ extension Product {
         case 0.3..<1.0:
             return ProductInsight(
                 id: "sodium",
-                icon: "drop.fill",
+                icon: "drop",
                 title: "Sodium",
                 status: "Moderate",
                 value: "\(formattedGrams(salt)) salt",
@@ -390,7 +385,7 @@ extension Product {
         default:
             return ProductInsight(
                 id: "sodium",
-                icon: "drop.fill",
+                icon: "drop",
                 title: "Sodium",
                 status: "High",
                 value: "\(formattedGrams(salt)) salt",
@@ -404,7 +399,7 @@ extension Product {
         guard let sugar = sugarForScoring else {
             return ProductInsight(
                 id: "sugar",
-                icon: "cube.fill",
+                icon: "cube",
                 title: "Sugar",
                 status: "Limited",
                 value: "Not available",
@@ -417,7 +412,7 @@ extension Product {
         case ..<5:
             return ProductInsight(
                 id: "sugar",
-                icon: "cube.fill",
+                icon: "cube",
                 title: sugarLabel.capitalized,
                 status: "Low",
                 value: formattedGrams(sugar),
@@ -427,7 +422,7 @@ extension Product {
         case 5..<12:
             return ProductInsight(
                 id: "sugar",
-                icon: "cube.fill",
+                icon: "cube",
                 title: sugarLabel.capitalized,
                 status: "Moderate",
                 value: formattedGrams(sugar),
@@ -437,7 +432,7 @@ extension Product {
         default:
             return ProductInsight(
                 id: "sugar",
-                icon: "cube.fill",
+                icon: "cube",
                 title: sugarLabel.capitalized,
                 status: "Higher",
                 value: formattedGrams(sugar),
@@ -504,7 +499,7 @@ extension Product {
         guard protein != nil || fiber != nil else {
             return ProductInsight(
                 id: "protein-fiber",
-                icon: "leaf.fill",
+                icon: "leaf",
                 title: "Protein",
                 status: "Limited",
                 value: "Not available",
@@ -520,7 +515,7 @@ extension Product {
         if (protein ?? 0) >= 10 || (fiber ?? 0) >= 6 {
             return ProductInsight(
                 id: "protein-fiber",
-                icon: "leaf.fill",
+                icon: "leaf",
                 title: "Protein",
                 status: "Helpful",
                 value: value,
@@ -531,7 +526,7 @@ extension Product {
 
         return ProductInsight(
             id: "protein-fiber",
-            icon: "leaf.fill",
+            icon: "leaf",
             title: "Protein",
             status: "Modest",
             value: value,

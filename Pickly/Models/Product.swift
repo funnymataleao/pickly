@@ -1,18 +1,18 @@
 import Foundation
 
-enum ProductSource: String, Codable, Hashable {
+nonisolated enum ProductSource: String, Codable, Hashable, Sendable {
     case mock
     case openFoodFacts
     case unknown
 }
 
-enum DietaryStatus: String, Codable, Hashable {
+nonisolated enum DietaryStatus: String, Codable, Hashable, Sendable {
     case confirmed
     case notSuitable
     case unknown
 }
 
-struct DietaryAttributes: Codable, Hashable {
+nonisolated struct DietaryAttributes: Codable, Hashable, Sendable {
     var vegetarian: DietaryStatus = .unknown
     var vegan: DietaryStatus = .unknown
     var glutenFree: DietaryStatus = .unknown
@@ -21,8 +21,15 @@ struct DietaryAttributes: Codable, Hashable {
     static let unknown = DietaryAttributes()
 }
 
-struct Product: Identifiable, Hashable, Codable {
-    struct Nutrition: Hashable, Codable {
+nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
+    struct SugarAssessment: Hashable, Sendable {
+        let value: Double?
+        let label: String
+        let explanation: String?
+        let hasDataConflict: Bool
+    }
+
+    struct Nutrition: Hashable, Codable, Sendable {
         var sugars100g: Double?
         var addedSugars100g: Double?
         var salt100g: Double?
@@ -71,16 +78,99 @@ struct Product: Identifiable, Hashable, Codable {
 
         var knownFieldCount: Int {
             [
-                addedSugars100g ?? sugars100g,
-                salt100g,
-                saturatedFat100g,
-                proteins100g,
-                fiber100g
+                Self.plausible(addedSugars100g) ?? Self.plausible(sugars100g),
+                Self.plausible(salt100g),
+                Self.plausible(saturatedFat100g),
+                Self.plausible(proteins100g),
+                Self.plausible(fiber100g)
             ].compactMap { $0 }.count
         }
 
         var isIncomplete: Bool {
-            knownFieldCount <= 1
+            let hasSugar = Self.plausible(addedSugars100g) != nil
+                || Self.plausible(sugars100g) != nil
+            let hasSalt = Self.plausible(salt100g) != nil
+            let hasSaturatedFat = Self.plausible(saturatedFat100g) != nil
+
+            // A score must have the core negative nutrition fields. Protein and
+            // fiber can improve a complete result, but cannot establish a safe
+            // baseline when sugar, salt, or saturated fat is unknown.
+            return !(hasSugar && hasSalt && hasSaturatedFat)
+        }
+
+        func sugarAssessment(ingredients: [String]) -> SugarAssessment {
+            let totalSugar = Self.plausible(sugars100g)
+            let addedSugar = Self.plausible(addedSugars100g)
+            let addedSugarExceedsTotal = addedSugar.map { added in
+                totalSugar.map { added > $0 + 0.1 } ?? false
+            } ?? false
+            let zeroAddedSugarConflictsWithIngredients = addedSugar == 0
+                && (totalSugar ?? 0) > 1
+                && Self.containsAddedSweetener(in: ingredients)
+            let rawAddedSugarIsInvalid = addedSugars100g != nil && addedSugar == nil
+            let hasConflict = rawAddedSugarIsInvalid
+                || addedSugarExceedsTotal
+                || zeroAddedSugarConflictsWithIngredients
+
+            if let addedSugar, !hasConflict {
+                return SugarAssessment(
+                    value: addedSugar,
+                    label: "added sugar",
+                    explanation: nil,
+                    hasDataConflict: false
+                )
+            }
+
+            if let totalSugar {
+                return SugarAssessment(
+                    value: totalSugar,
+                    label: "sugar",
+                    explanation: hasConflict
+                        ? "Added sugar data looks inconsistent, so this uses total sugar"
+                        : "Added sugar data is not available, so this uses total sugar",
+                    hasDataConflict: hasConflict
+                )
+            }
+
+            return SugarAssessment(
+                value: nil,
+                label: "sugar",
+                explanation: hasConflict
+                    ? "Added sugar data looks inconsistent and total sugar is unavailable"
+                    : nil,
+                hasDataConflict: hasConflict
+            )
+        }
+
+        private static func plausible(_ value: Double?) -> Double? {
+            guard let value, value.isFinite, (0...100).contains(value) else {
+                return nil
+            }
+
+            return value
+        }
+
+        private static func containsAddedSweetener(in ingredients: [String]) -> Bool {
+            let sweetenerTerms = [
+                "sugar", "sucre", "sucrose", "saccharose", "syrup", "sirup",
+                "glucose", "fructose", "dextrose", "maltose", "honey", "molasses",
+                "agave", "corn sweetener", "sweetened condensed"
+            ]
+
+            return ingredients.contains { ingredient in
+                let normalized = ingredient
+                    .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                    .lowercased()
+                let tokens = Set(
+                    normalized
+                        .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                        .filter { !$0.isEmpty }
+                )
+
+                return sweetenerTerms.contains { term in
+                    term.contains(" ") ? normalized.contains(term) : tokens.contains(term)
+                }
+            }
         }
     }
 
@@ -205,11 +295,11 @@ struct Product: Identifiable, Hashable, Codable {
     }
 
     var sugarForScoring: Double? {
-        nutrition.addedSugars100g ?? nutrition.sugars100g
+        nutrition.sugarAssessment(ingredients: ingredients).value
     }
 
     var sugarLabel: String {
-        nutrition.addedSugars100g == nil ? "sugar" : "added sugar"
+        nutrition.sugarAssessment(ingredients: ingredients).label
     }
 
     var ingredientCountLabel: String {

@@ -1,10 +1,8 @@
 import SwiftUI
 
 private struct PicklyProminentButtonForegroundModifier: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
-
     func body(content: Content) -> some View {
-        content.foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
+        content.foregroundStyle(PicklyColor.onBrandAccent)
     }
 }
 

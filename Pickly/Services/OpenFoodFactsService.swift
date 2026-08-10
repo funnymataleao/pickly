@@ -1,6 +1,6 @@
 import Foundation
 
-struct OpenFoodFactsService {
+nonisolated struct OpenFoodFactsService: Sendable {
     enum ServiceError: LocalizedError {
         case invalidBarcode
         case invalidURL
@@ -30,7 +30,7 @@ struct OpenFoodFactsService {
     private let scoringService: ScoringService
     private let session: URLSession
 
-    nonisolated init(
+    init(
         scoringService: ScoringService = ScoringService(),
         session: URLSession = .shared
     ) {
@@ -49,7 +49,8 @@ struct OpenFoodFactsService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Pickly/1.0 (https://github.com/funnymataleao/pickly)", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 8
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let data: Data
@@ -97,13 +98,14 @@ struct OpenFoodFactsService {
             return []
         }
 
-        guard let url = searchURL(query: trimmedQuery, pageSize: pageSize) else {
+        guard let url = Self.searchURL(query: trimmedQuery, pageSize: pageSize) else {
             throw ServiceError.invalidURL
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Pickly/1.0 (https://github.com/funnymataleao/pickly)", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 8
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let data: Data
@@ -167,13 +169,16 @@ struct OpenFoodFactsService {
         return components.url
     }
 
-    private func searchURL(query: String, pageSize: Int) -> URL? {
+    static func searchURL(query: String, pageSize: Int) -> URL? {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "world.openfoodfacts.org"
-        components.path = "/api/v2/search"
+        components.path = "/cgi/search.pl"
         components.queryItems = [
             URLQueryItem(name: "search_terms", value: query),
+            URLQueryItem(name: "search_simple", value: "1"),
+            URLQueryItem(name: "action", value: "process"),
+            URLQueryItem(name: "json", value: "1"),
             URLQueryItem(name: "page_size", value: String(max(1, min(pageSize, 50)))),
             URLQueryItem(name: "sort_by", value: "unique_scans_n"),
             URLQueryItem(name: "fields", value: [
@@ -215,19 +220,20 @@ struct OpenFoodFactsService {
             fallbackText: openFoodFactsProduct.ingredientsText
         )
         let productName = clean(openFoodFactsProduct.productName)
-        let scoring = scoringService.evaluate(
-            nutrition: nutrition,
-            ingredients: ingredients,
-            additivesTags: openFoodFactsProduct.additivesTags ?? [],
-            hasProductName: productName != nil
-        )
-
-        let name = productName ?? "Unknown product"
-        let brand = clean(openFoodFactsProduct.brands) ?? "Unknown brand"
         let category = category(
             from: openFoodFactsProduct.categories,
             tags: openFoodFactsProduct.categoriesTags
         )
+        let scoring = scoringService.evaluate(
+            nutrition: nutrition,
+            ingredients: ingredients,
+            additivesTags: openFoodFactsProduct.additivesTags ?? [],
+            hasProductName: productName != nil,
+            category: category
+        )
+
+        let name = productName ?? "Unknown product"
+        let brand = clean(openFoodFactsProduct.brands) ?? "Unknown brand"
         let imageURL = imageURL(from: openFoodFactsProduct)
 
         return Product(
@@ -268,9 +274,7 @@ struct OpenFoodFactsService {
             return []
         }
 
-        // Keep unstructured text as one conservative item instead of inflating the score
-        // by splitting nested ingredient groups at every comma.
-        return [fallbackText]
+        return IngredientListParser().parse(fallbackText)
     }
 
     private func flatten(_ ingredient: OpenFoodFactsIngredient) -> [OpenFoodFactsIngredient] {
@@ -295,6 +299,7 @@ struct OpenFoodFactsService {
     private func dietaryAttributes(from product: OpenFoodFactsProduct) -> DietaryAttributes {
         let labels = normalizedTags(product.labelsTags)
         let allergens = normalizedTags(product.allergensTags)
+        let traces = normalizedTags(product.tracesTags)
         let ingredientValues = (product.ingredients ?? []).flatMap(flatten)
 
         return DietaryAttributes(
@@ -314,13 +319,15 @@ struct OpenFoodFactsService {
                 labels: labels,
                 confirmedLabels: ["en:gluten-free", "en:no-gluten"],
                 disqualifyingTags: ["en:gluten", "en:wheat"],
-                allergens: allergens
+                allergens: allergens,
+                traces: traces
             ),
             lactoseFree: labelOrAllergenStatus(
                 labels: labels,
                 confirmedLabels: ["en:lactose-free"],
                 disqualifyingTags: ["en:milk", "en:lactose"],
-                allergens: allergens
+                allergens: allergens,
+                traces: traces
             )
         )
     }
@@ -350,17 +357,29 @@ struct OpenFoodFactsService {
         labels: Set<String>,
         confirmedLabels: Set<String>,
         disqualifyingTags: Set<String>,
-        allergens: Set<String>
+        allergens: Set<String>,
+        traces: Set<String>
     ) -> DietaryStatus {
-        if !labels.isDisjoint(with: confirmedLabels) {
-            return .confirmed
-        }
-
         if !allergens.isDisjoint(with: disqualifyingTags) {
             return .notSuitable
         }
 
+        // A positive label cannot make the product confirmed when the same
+        // allergen is present as a trace. Keep the result conservative.
+        if !traces.isDisjoint(with: disqualifyingTags) {
+            return .unknown
+        }
+
+        if !labels.isDisjoint(with: confirmedLabels) {
+            return .confirmed
+        }
+
         return .unknown
+    }
+
+    private var userAgent: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        return "Pickly/\(version) (https://github.com/funnymataleao/pickly/issues)"
     }
 
     private func normalizedTags(_ tags: [String]?) -> Set<String> {
@@ -379,7 +398,7 @@ struct OpenFoodFactsService {
     }
 }
 
-private struct OpenFoodFactsResponse: Decodable {
+nonisolated private struct OpenFoodFactsResponse: Decodable, Sendable {
     let code: String?
     let status: String?
     let product: OpenFoodFactsProduct?
@@ -398,11 +417,11 @@ private struct OpenFoodFactsResponse: Decodable {
     }
 }
 
-private struct OpenFoodFactsSearchResponse: Decodable {
+nonisolated private struct OpenFoodFactsSearchResponse: Decodable, Sendable {
     let products: [OpenFoodFactsProduct]
 }
 
-private struct OpenFoodFactsProduct: Decodable {
+nonisolated private struct OpenFoodFactsProduct: Decodable, Sendable {
     let code: String?
     let productName: String?
     let brands: String?
@@ -436,7 +455,7 @@ private struct OpenFoodFactsProduct: Decodable {
     }
 }
 
-private struct OpenFoodFactsIngredient: Decodable {
+nonisolated private struct OpenFoodFactsIngredient: Decodable, Sendable {
     let id: String?
     let text: String?
     let vegan: String?
@@ -444,7 +463,7 @@ private struct OpenFoodFactsIngredient: Decodable {
     let ingredients: [OpenFoodFactsIngredient]?
 }
 
-private struct OpenFoodFactsNutriments: Decodable {
+nonisolated private struct OpenFoodFactsNutriments: Decodable, Sendable {
     let sugars100g: Double?
     let addedSugars100g: Double?
     let salt100g: Double?
@@ -472,7 +491,7 @@ private struct OpenFoodFactsNutriments: Decodable {
     }
 }
 
-private extension KeyedDecodingContainer {
+nonisolated private extension KeyedDecodingContainer {
     func decodeFlexibleString(forKey key: Key) -> String? {
         if let value = try? decode(String.self, forKey: key) {
             return value

@@ -1,7 +1,9 @@
 import Foundation
 
-enum SupabaseCredentials {
-    private static let infoDictionary = Bundle.main.infoDictionary
+nonisolated enum SupabaseCredentials {
+    private static var infoDictionary: [String: Any]? {
+        Bundle.main.infoDictionary
+    }
 
     static var projectURL: URL? {
         guard
@@ -21,8 +23,20 @@ enum SupabaseCredentials {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    static var googleIOSClientID: String? {
+        configuredValue(for: "GOOGLE_IOS_CLIENT_ID")
+    }
+
+    static var googleServerClientID: String? {
+        configuredValue(for: "GOOGLE_SERVER_CLIENT_ID")
+    }
+
     static var accountDeletionFunctionURL: URL? {
         projectURL?.appending(path: "functions/v1/delete-account")
+    }
+
+    static var appleTokenFunctionURL: URL? {
+        projectURL?.appending(path: "functions/v1/apple-token")
     }
 
     static var isConfigured: Bool {
@@ -30,5 +44,26 @@ enum SupabaseCredentials {
             && !publishableKey.isEmpty
             && !publishableKey.hasPrefix("PASTE_")
             && !publishableKey.hasPrefix("$(")
+    }
+
+    static var isGoogleConfigured: Bool {
+        googleIOSClientID != nil && googleServerClientID != nil
+    }
+
+    private static func configuredValue(for key: String) -> String? {
+        guard let rawValue = infoDictionary?[key] as? String else {
+            return nil
+        }
+
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            !value.isEmpty,
+            !value.hasPrefix("PASTE_"),
+            !value.hasPrefix("$(")
+        else {
+            return nil
+        }
+
+        return value
     }
 }

@@ -14,7 +14,6 @@ struct ScanView: View {
 
     @State private var isFrameBreathing = false
     @State private var isManualBarcodeEntryPresented = false
-    @State private var requestContext: ProductRequestContext?
 
     init(
         productLookupService: any ProductLookupService,
@@ -57,11 +56,6 @@ struct ScanView: View {
                 isManualBarcodeEntryPresented = false
                 viewModel.submitManualBarcode(barcode)
             }
-        }
-        .sheet(item: $requestContext, onDismiss: {
-            viewModel.scanAgain()
-        }) { context in
-            ProductRequestPlaceholderView(barcode: context.barcode)
         }
         .navigationDestination(item: $viewModel.scannedProduct) { product in
             ProductResultView(
@@ -209,18 +203,16 @@ struct ScanView: View {
             ScanStateCard(
                 systemImage: "barcode.viewfinder",
                 title: "Product not found",
-                message: "This barcode isn't in our data yet. You can request it with photos so it can be reviewed later.",
+                message: "This barcode isn't in our data yet. Try another barcode or search by product name.",
                 barcode: barcode,
-                primaryTitle: "Request product",
-                primarySystemImage: "plus.viewfinder",
-                primaryAction: {
-                    requestContext = ProductRequestContext(barcode: barcode)
-                },
-                secondaryTitle: "Scan again",
-                secondaryAction: viewModel.scanAgain,
-                tertiaryTitle: "Enter barcode manually",
-                tertiarySystemImage: "keyboard",
-                tertiaryAction: { isManualBarcodeEntryPresented = true }
+                primaryTitle: "Scan again",
+                primarySystemImage: "arrow.clockwise",
+                primaryAction: viewModel.scanAgain,
+                secondaryTitle: "Enter barcode manually",
+                secondaryAction: { isManualBarcodeEntryPresented = true },
+                tertiaryTitle: nil,
+                tertiarySystemImage: nil,
+                tertiaryAction: nil
             )
         case .unreadable:
             ScanStateCard(
@@ -301,12 +293,6 @@ struct ScanView: View {
 
         UIApplication.shared.open(url)
     }
-}
-
-private struct ProductRequestContext: Identifiable {
-    let barcode: String
-
-    var id: String { barcode }
 }
 
 private struct ScannerFrameOverlay: View {
@@ -396,8 +382,11 @@ private struct ScanCameraStatusOverlay: View {
             ProgressView()
                 .controlSize(.large)
         case .success:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 38, weight: .semibold))
+            PicklyIconImage(
+                systemName: "checkmark.circle.fill",
+                size: 38,
+                scalesWithDynamicType: false
+            )
                 .foregroundStyle(PicklyColor.primary)
         }
     }
@@ -466,8 +455,7 @@ private struct ScanStateCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: systemImage)
-                    .font(.title3.weight(.semibold))
+                PicklyIconImage(systemName: systemImage, size: 21)
                     .foregroundStyle(PicklyColor.primary)
                     .frame(width: 42, height: 42)
                     .background(PicklyColor.mint, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
@@ -491,7 +479,7 @@ private struct ScanStateCard: View {
 
             VStack(spacing: 10) {
                 Button(action: primaryAction) {
-                    Label(primaryTitle, systemImage: primarySystemImage)
+                    Label(primaryTitle, picklyIcon: primarySystemImage)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -507,7 +495,7 @@ private struct ScanStateCard: View {
 
                 if let tertiaryTitle, let tertiarySystemImage, let tertiaryAction {
                     Button(action: tertiaryAction) {
-                        Label(tertiaryTitle, systemImage: tertiarySystemImage)
+                        Label(tertiaryTitle, picklyIcon: tertiarySystemImage)
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -537,8 +525,11 @@ private struct ScanStandaloneStateView: View {
         VStack(spacing: 16) {
             Spacer(minLength: 10)
 
-            Image(systemName: systemImage)
-                .font(.system(size: 44, weight: .semibold))
+            PicklyIconImage(
+                systemName: systemImage,
+                size: 44,
+                scalesWithDynamicType: false
+            )
                 .foregroundStyle(PicklyColor.primary)
 
             VStack(spacing: 6) {
@@ -555,7 +546,7 @@ private struct ScanStandaloneStateView: View {
 
             if let primaryTitle, let primarySystemImage, let primaryAction {
                 Button(action: primaryAction) {
-                    Label(primaryTitle, systemImage: primarySystemImage)
+                    Label(primaryTitle, picklyIcon: primarySystemImage)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -624,8 +615,7 @@ private struct BarcodeChip: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "number")
-                .font(.caption.weight(.semibold))
+            PicklyIconImage(systemName: "number", size: 14)
                 .foregroundStyle(.secondary)
 
             Text(barcode)
@@ -724,4 +714,5 @@ private struct ManualBarcodeEntrySheet: View {
             preferences: .prototype
         )
     }
+    .environmentObject(SubscriptionStore(loadProducts: false))
 }

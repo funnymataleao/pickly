@@ -1,12 +1,25 @@
-import Foundation
+import AuthenticationServices
 import Combine
+import CryptoKit
+import Foundation
+import Security
 
 @MainActor
 final class AuthStore: ObservableObject {
+    enum NonceError: LocalizedError, Equatable {
+        case invalidLength
+        case secureRandomUnavailable(OSStatus)
+
+        var errorDescription: String? {
+            "Secure sign-in couldn't start. Please try again."
+        }
+    }
+
     enum State: Equatable {
         case signedOut
         case signedIn(AuthSession)
         case needsEmailConfirmation(String)
+        case recoveringPassword(AuthSession)
     }
 
     @Published private(set) var state: State = .signedOut
@@ -14,10 +27,18 @@ final class AuthStore: ObservableObject {
     @Published private(set) var isRestoringSession = true
     @Published var statusMessage: String?
 
-    private let service: EmailAuthService
+    private let service: AuthService
+    private let googleSignInProvider: GoogleSignInProviding
+    private static let pendingAppleAuthorizationAccountPrefix = "pending-apple-authorization."
+    private var appleRawNonce: String?
+    private var hasAttemptedSessionRestore = false
 
     var isConfigured: Bool {
         service.isConfigured
+    }
+
+    var isGoogleConfigured: Bool {
+        service.isConfigured && googleSignInProvider.isConfigured
     }
 
     var currentEmail: String? {
@@ -28,14 +49,134 @@ final class AuthStore: ObservableObject {
             return session.user.email
         case .needsEmailConfirmation(let email):
             return email
+        case .recoveringPassword(let session):
+            return session.user.email
         }
     }
 
-    init(service: EmailAuthService? = nil) {
-        self.service = service ?? SupabaseEmailAuthService()
+    init(
+        service: AuthService? = nil,
+        googleSignInProvider: GoogleSignInProviding? = nil
+    ) {
+        self.service = service ?? SupabaseAuthService()
+        self.googleSignInProvider = googleSignInProvider ?? GoogleSignInProvider()
+    }
 
-        Task { [weak self] in
-            await self?.restoreSession()
+    /// Restores an existing account only when the account surface is opened.
+    /// Authentication must not delay the first useful app frame.
+    func restoreSessionIfNeeded() async {
+        guard !hasAttemptedSessionRestore else { return }
+        hasAttemptedSessionRestore = true
+        await restoreSession()
+    }
+
+    func configureAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
+        do {
+            let rawNonce = try Self.randomNonce()
+            appleRawNonce = rawNonce
+            statusMessage = nil
+
+            request.requestedScopes = [.email, .fullName]
+            request.nonce = Self.sha256(rawNonce)
+        } catch {
+            appleRawNonce = nil
+            statusMessage = Self.nonceErrorMessage(error)
+        }
+    }
+
+    func completeAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
+        guard !isWorking else { return }
+
+        do {
+            let authorization = try result.get()
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                throw AuthServiceError.invalidResponse
+            }
+            guard
+                let identityToken = credential.identityToken,
+                let idToken = String(data: identityToken, encoding: .utf8),
+                let rawNonce = appleRawNonce
+            else {
+                throw AuthServiceError.invalidResponse
+            }
+
+            guard
+                let authorizationCode = credential.authorizationCode
+                    .flatMap({ String(data: $0, encoding: .utf8) }),
+                !authorizationCode.isEmpty
+            else {
+                throw AuthServiceError.invalidResponse
+            }
+
+            appleRawNonce = nil
+            await runAuthTask {
+                let session = try await service.signIn(
+                    with: IdentityTokenCredentials(
+                        provider: .apple,
+                        idToken: idToken,
+                        nonce: rawNonce,
+                        fullName: credential.fullName
+                    )
+                )
+                do {
+                    try await storeAppleAuthorizationCode(authorizationCode, session: session)
+                } catch {
+                    try? await service.signOut(session: session)
+                    throw error
+                }
+                state = .signedIn(session)
+                statusMessage = "Signed in with Apple."
+            }
+        } catch let error as ASAuthorizationError {
+            appleRawNonce = nil
+
+            // Cancelling the system sheet is an expected exit. Clear any
+            // stale message so the onboarding surface returns to its normal
+            // layout and keeps the guest action available.
+            guard error.code != .canceled else {
+                statusMessage = nil
+                return
+            }
+
+#if targetEnvironment(simulator)
+            // Sign in with Apple is not available in the iOS Simulator. Do
+            // not replace the usable email/Google/guest choices with a
+            // diagnostic card when the user taps the Apple button here.
+            guard error.code != .unknown else {
+                statusMessage = nil
+                return
+            }
+#endif
+
+            statusMessage = Self.appleAuthorizationErrorMessage(error)
+        } catch {
+            appleRawNonce = nil
+            statusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    func signInWithGoogle() async {
+        let rawNonce: String
+        do {
+            rawNonce = try Self.randomNonce()
+        } catch {
+            statusMessage = Self.nonceErrorMessage(error)
+            return
+        }
+        let hashedNonce = Self.sha256(rawNonce)
+
+        await runAuthTask {
+            let tokens = try await googleSignInProvider.signIn(nonce: hashedNonce)
+            let session = try await service.signIn(
+                with: IdentityTokenCredentials(
+                    provider: .google,
+                    idToken: tokens.idToken,
+                    accessToken: tokens.accessToken,
+                    nonce: rawNonce
+                )
+            )
+            state = .signedIn(session)
+            statusMessage = "Signed in with Google."
         }
     }
 
@@ -60,9 +201,55 @@ final class AuthStore: ObservableObject {
         }
     }
 
+    func requestPasswordReset(email: String) async {
+        await runAuthTask {
+            try await service.requestPasswordReset(email: email)
+            statusMessage = "Check your email for a password reset link."
+        }
+    }
+
+    func handleIncomingURL(_ url: URL) async -> Bool {
+        guard
+            url.scheme?.lowercased() == "pickly",
+            url.host?.lowercased() == "auth",
+            url.path == "/reset-password"
+        else {
+            return false
+        }
+
+        await runAuthTask {
+            let session = try await service.completePasswordRecovery(from: url)
+            state = .recoveringPassword(session)
+        }
+        return true
+    }
+
+    func updatePassword(_ password: String) async -> Bool {
+        guard case .recoveringPassword = state else { return false }
+
+        await runAuthTask {
+            let session = try await service.updatePassword(password)
+            state = .signedIn(session)
+            statusMessage = "Password updated."
+        }
+        return !isRecoveringPassword
+    }
+
+    func cancelPasswordRecovery() async {
+        guard case .recoveringPassword(let session) = state else { return }
+        state = .signedOut
+        try? await service.signOut(session: session)
+    }
+
+    var isRecoveringPassword: Bool {
+        if case .recoveringPassword = state { return true }
+        return false
+    }
+
     func signOut() async {
         let session = currentSession
         state = .signedOut
+        googleSignInProvider.signOut()
 
         guard let session else {
             statusMessage = "Signed out."
@@ -90,9 +277,23 @@ final class AuthStore: ObservableObject {
         defer { isWorking = false }
 
         do {
+            await retryPendingAppleAuthorizationCode(for: session)
             try await service.deleteAccount(session: session)
+
+            // Server deletion is the durable success condition. Reflect it in
+            // the UI immediately instead of keeping the account sheet blocked
+            // while a provider performs its optional local cleanup.
             state = .signedOut
             statusMessage = "Your account was deleted."
+
+            if session.identityProvider == .google {
+                Task { @MainActor [googleSignInProvider] in
+                    try? await googleSignInProvider.disconnect()
+                    googleSignInProvider.signOut()
+                }
+            } else {
+                googleSignInProvider.signOut()
+            }
             return true
         } catch {
             statusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -106,18 +307,83 @@ final class AuthStore: ObservableObject {
         do {
             if let session = try await service.restoreSession() {
                 state = .signedIn(session)
+                await retryPendingAppleAuthorizationCode(for: session)
             }
         } catch {
             state = .signedOut
         }
     }
 
-    private var currentSession: AuthSession? {
-        guard case .signedIn(let session) = state else {
-            return nil
+    private func storeAppleAuthorizationCode(
+        _ authorizationCode: String,
+        session: AuthSession
+    ) async throws {
+        let account = Self.pendingAppleAuthorizationAccount(for: session.user.id)
+        try? KeychainStore.save(authorizationCode, account: account)
+
+        do {
+            try await service.storeAppleAuthorizationCode(
+                authorizationCode,
+                session: session
+            )
+            KeychainStore.remove(account: account)
+        } catch {
+            KeychainStore.remove(account: account)
+            throw AuthServiceError.requestFailed(
+                "Apple sign-in couldn't finish securely. Please try again."
+            )
+        }
+    }
+
+    private func retryPendingAppleAuthorizationCode(for session: AuthSession) async {
+        guard session.identityProvider == .apple else { return }
+
+        let account = Self.pendingAppleAuthorizationAccount(for: session.user.id)
+        let authorizationCode: String?
+        do {
+            authorizationCode = try KeychainStore.load(String.self, account: account)
+        } catch {
+            return
         }
 
-        return session
+        guard let authorizationCode else { return }
+
+        do {
+            try await service.storeAppleAuthorizationCode(
+                authorizationCode,
+                session: session
+            )
+            KeychainStore.remove(account: account)
+        } catch {
+            // Apple authorization codes are short-lived and single-use. A
+            // failed retry must not loop forever with an expired credential.
+            KeychainStore.remove(account: account)
+        }
+    }
+
+    private static func pendingAppleAuthorizationAccount(for userID: String) -> String {
+        pendingAppleAuthorizationAccountPrefix + userID
+    }
+
+    private static func appleAuthorizationErrorMessage(_ error: ASAuthorizationError) -> String {
+        guard error.code == .unknown else {
+            return "Apple sign-in couldn't be completed. Please try again."
+        }
+
+#if targetEnvironment(simulator)
+        return "Sign in with Apple isn't available in this Simulator. Use email or Google here, or test Apple sign-in on a real iPhone."
+#else
+        return "Apple sign-in couldn't start. Make sure this iPhone is signed in to iCloud, then try again."
+#endif
+    }
+
+    var currentSession: AuthSession? {
+        switch state {
+        case .signedIn(let session), .recoveringPassword(let session):
+            return session
+        case .signedOut, .needsEmailConfirmation:
+            return nil
+        }
     }
 
     private func runAuthTask(_ operation: () async throws -> Void) async {
@@ -128,10 +394,57 @@ final class AuthStore: ObservableObject {
 
         do {
             try await operation()
+        } catch GoogleSignInProviderError.cancelled {
+            // User cancellation is an expected exit, not an authentication error.
         } catch {
             statusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
 
         isWorking = false
+    }
+
+    private static func randomNonce(length: Int = 32) throws -> String {
+        try makeNonce(length: length) {
+            var randomByte: UInt8 = 0
+            let status = SecRandomCopyBytes(kSecRandomDefault, 1, &randomByte)
+            guard status == errSecSuccess else {
+                throw NonceError.secureRandomUnavailable(status)
+            }
+            return randomByte
+        }
+    }
+
+    static func makeNonce(
+        length: Int,
+        randomByte: () throws -> UInt8
+    ) throws -> String {
+        guard length > 0 else {
+            throw NonceError.invalidLength
+        }
+
+        let characters = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        result.reserveCapacity(length)
+
+        while result.count < length {
+            let byte = try randomByte()
+
+            if Int(byte) < characters.count {
+                result.append(characters[Int(byte)])
+            }
+        }
+
+        return result
+    }
+
+    private static func nonceErrorMessage(_ error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription
+            ?? "Secure sign-in couldn't start. Please try again."
+    }
+
+    private static func sha256(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-struct BarcodeValidator {
+nonisolated struct BarcodeValidator: Sendable {
     private static let supportedLengths: Set<Int> = [8, 12, 13, 14]
 
     static func normalize(_ rawValue: String) -> String? {

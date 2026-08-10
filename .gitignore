@@ -8,3 +8,4 @@ xcuserdata/
 # Local Supabase configuration must stay outside source control
 Docs/Supabase.local.xcconfig
 Config/Local.xcconfig
+supabase/.temp/

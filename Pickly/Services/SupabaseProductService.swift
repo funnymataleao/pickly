@@ -1,6 +1,6 @@
 import Foundation
 
-struct SupabaseProductService {
+nonisolated struct SupabaseProductService: Sendable {
     enum ServiceError: LocalizedError {
         case notConfigured
         case invalidURL
@@ -23,11 +23,8 @@ struct SupabaseProductService {
     }
 
     private let session: URLSession
-    private let decoder: JSONDecoder
-
-    nonisolated init(session: URLSession = .shared) {
+    init(session: URLSession = .shared) {
         self.session = session
-        self.decoder = JSONDecoder()
     }
 
     var isConfigured: Bool {
@@ -46,7 +43,7 @@ struct SupabaseProductService {
         )
 
         do {
-            return try decoder
+            return try JSONDecoder()
                 .decode([ProductRow].self, from: data)
                 .map(Product.init(row:))
         } catch {
@@ -80,7 +77,7 @@ struct SupabaseProductService {
         )
 
         do {
-            return try decoder
+            return try JSONDecoder()
                 .decode([ProductRow].self, from: data)
                 .map(Product.init(row:))
         } catch {
@@ -100,7 +97,7 @@ struct SupabaseProductService {
         )
 
         do {
-            guard let row = try decoder.decode([ProductRow].self, from: data).first else {
+            guard let row = try JSONDecoder().decode([ProductRow].self, from: data).first else {
                 return nil
             }
 
@@ -125,7 +122,7 @@ struct SupabaseProductService {
         )
 
         do {
-            let rows = try decoder.decode([AlternativeRow].self, from: data)
+            let rows = try JSONDecoder().decode([AlternativeRow].self, from: data)
             return product.withAlternativeIDs(rows.map(\.alternativeProductID))
         } catch {
             throw ServiceError.decoding(error)
@@ -153,6 +150,7 @@ struct SupabaseProductService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 8
         request.setValue(SupabaseCredentials.publishableKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
@@ -177,7 +175,7 @@ struct SupabaseProductService {
     }
 }
 
-private struct ProductRow: Decodable {
+nonisolated private struct ProductRow: Decodable, Sendable {
     static let selectFields = [
         "id",
         "barcode",
@@ -194,7 +192,8 @@ private struct ProductRow: Decodable {
         "warnings",
         "positives",
         "confidence",
-        "source"
+        "source",
+        "score_version"
     ].joined(separator: ",")
 
     let id: String
@@ -213,6 +212,7 @@ private struct ProductRow: Decodable {
     let positives: [String]
     let confidence: String
     let source: String
+    let scoreVersion: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -231,10 +231,11 @@ private struct ProductRow: Decodable {
         case positives
         case confidence
         case source
+        case scoreVersion = "score_version"
     }
 }
 
-private struct AlternativeRow: Decodable {
+nonisolated private struct AlternativeRow: Decodable, Sendable {
     let alternativeProductID: String
 
     enum CodingKeys: String, CodingKey {
@@ -242,20 +243,44 @@ private struct AlternativeRow: Decodable {
     }
 }
 
-private extension Product {
+nonisolated enum ServerScoringPolicy {
+    static let currentVersion = "mvp-v2"
+
+    static func shouldUseCuratedScoring(
+        version: String?,
+        nutrition: Product.Nutrition,
+        ingredients: [String]
+    ) -> Bool {
+        guard
+            version?.trimmingCharacters(in: .whitespacesAndNewlines) == currentVersion,
+            !nutrition.isIncomplete
+        else {
+            return false
+        }
+
+        return !nutrition.sugarAssessment(ingredients: ingredients).hasDataConflict
+    }
+}
+
+nonisolated private extension Product {
     init(row: ProductRow) {
-        let scoring = ScoringService().evaluate(
+        let fallbackScoring = ScoringService().evaluate(
             nutrition: row.nutrition,
             ingredients: row.ingredients,
-            additivesTags: []
+            additivesTags: [],
+            category: row.category
         )
-
-        let score = row.score ?? scoring.score
-        let summary = row.summary.isEmpty ? scoring.summary : row.summary
-        let reasons = row.reasons.isEmpty ? scoring.reasons : row.reasons
-        let warnings = row.warnings.isEmpty ? scoring.warnings : row.warnings
-        let positives = row.positives.isEmpty ? scoring.positives : row.positives
-        let confidence = row.confidence == "low" ? scoring.confidence : row.confidence.capitalized
+        let hasCuratedScoring = ServerScoringPolicy.shouldUseCuratedScoring(
+            version: row.scoreVersion,
+            nutrition: row.nutrition,
+            ingredients: row.ingredients
+        )
+        let score = hasCuratedScoring ? row.score : fallbackScoring.score
+        let summary = hasCuratedScoring ? row.summary : fallbackScoring.summary
+        let reasons = hasCuratedScoring ? row.reasons : fallbackScoring.reasons
+        let warnings = hasCuratedScoring ? row.warnings : fallbackScoring.warnings
+        let positives = hasCuratedScoring ? row.positives : fallbackScoring.positives
+        let confidence = hasCuratedScoring ? row.confidence : fallbackScoring.confidence
 
         self.init(
             id: row.id,
@@ -267,15 +292,15 @@ private extension Product {
             imageURL: row.imageURL,
             ingredients: row.ingredients,
             nutrition: row.nutrition,
-            nutritionSummary: scoring.nutritionSummary.isEmpty
+            nutritionSummary: fallbackScoring.nutritionSummary.isEmpty
                 ? ProductNutritionSummary.make(from: row.nutrition)
-                : scoring.nutritionSummary,
+                : fallbackScoring.nutritionSummary,
             score: score,
             summary: summary,
             reasons: reasons,
             warnings: warnings,
             positives: positives,
-            forYouNotes: [],
+            forYouNotes: hasCuratedScoring ? [] : fallbackScoring.forYouNotes,
             alternativeIDs: [],
             confidence: confidence,
             source: Self.source(from: row.source)
@@ -319,7 +344,7 @@ private extension Product {
     }
 }
 
-private enum ProductNutritionSummary {
+nonisolated private enum ProductNutritionSummary {
     static func make(from nutrition: Product.Nutrition) -> String {
         var values: [String] = []
 
