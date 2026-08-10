@@ -6,10 +6,10 @@
 
 ## ✅ Подготовлено к финальной проверке
 
-### 1. Privacy Policy ⚠️
+### 1. Privacy Policy ✅
 **URL:** https://funnymataleao.github.io/pickly/privacy.html
 
-**Статус:** локальная policy обновлена под текущий data flow, но публичная GitHub Pages-версия ещё должна быть опубликована и повторно проверена.
+**Статус:** опубликована через GitHub Pages и повторно проверена 10 августа 2026 года.
 
 **Что добавить в App Store Connect:**
 - App Information → Privacy Policy URL → вставь URL выше
@@ -43,6 +43,7 @@ Core flow доступен без аккаунта. Если для дополн
 - User ID (Linked, App Functionality, No tracking)
 - Product Interaction (Linked for submitted product requests, App Functionality, No tracking)
 - Purchases (Linked, App Functionality, No tracking)
+- Google Sign-In SDK service data: Phone Number, Coarse Location, Device ID, Other Data Types и Other Usage Data — по bundled privacy manifest 9.2.0
 - Third parties: Supabase, Open Food Facts, Google Sign-In
 
 ---
@@ -61,6 +62,8 @@ Core flow доступен без аккаунта. Если для дополн
   - [ ] Email Address настроен
   - [ ] Name настроен
   - [ ] User ID настроен
+  - [ ] Phone Number и Coarse Location настроены по Google Sign-In manifest
+  - [ ] Device ID, Other Data Types и Other Usage Data настроены по Google Sign-In manifest
   - [ ] Product Interaction настроен
   - [ ] Purchases настроен
   - [ ] Third parties указаны (Supabase, Open Food Facts, Google)
@@ -83,17 +86,20 @@ Core flow доступен без аккаунта. Если для дополн
 
 ### В Xcode:
 
-- [ ] **Build собран** без ошибок (Release configuration)
-- [ ] **Bundle ID:** com.pickly.app.Pickly (проверь совпадает с App Store Connect)
-- [ ] **Version:** 1.0
-- [ ] **Build number:** 1
+- [x] **Build собран** без ошибок (Release configuration)
+- [x] **Bundle ID:** com.pickly.app.Pickly
+- [x] **Version:** 1.0
+- [x] **Build number:** 1
 - [ ] **Sign in with Apple** работает на реальном устройстве
 - [ ] **Google Sign-In** работает (если настроен)
-- [ ] **StoreKit Configuration** добавлен в проект (PicklySubscriptions.storekit)
-- [ ] **Supported devices:** только iPhone
-- [ ] **Archive создан** и загружен в App Store Connect через Xcode Organizer
+- [x] **StoreKit Configuration** добавлен в проект (PicklySubscriptions.storekit)
+- [x] **Supported devices:** только iPhone
+- [x] **Archive создан** и успешно экспортирован как App Store Connect IPA с Apple Distribution signature
+- [ ] **IPA загружен** в App Store Connect через Xcode Organizer/Transporter
 
 ### Функциональные тесты:
+
+Автоматические тесты: **36/36 passed** на iPhone 17 Pro Simulator (iOS 26.4.1), 10 августа 2026 года.
 
 - [ ] **Camera permission** запрашивается корректно
 - [ ] **Barcode scanning** работает
@@ -200,7 +206,7 @@ grocery,scanner,nutrition,barcode,food,healthy,products,shopping,diet,alternativ
 
 **Support URL:**
 ```
-https://github.com/funnymataleao/pickly
+https://funnymataleao.github.io/pickly/support.html
 ```
 
 **Marketing URL:**

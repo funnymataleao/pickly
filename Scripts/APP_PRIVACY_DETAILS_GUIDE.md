@@ -17,11 +17,12 @@ Apple спросит: **"Does your app collect data from this app?"**
 
 ✅ **Ответ: YES**
 
-Pickly собирает или передаёт для работы функции:
+Pickly и встроенные SDK собирают или передают для работы функции:
 - Email и User ID (для аккаунта Supabase)
 - Name, если он предоставлен Apple или Google
 - Product Interactions (поисковые запросы и баркоды для поиска)
 - Verified subscription status для доступа к Pickly Plus
+- Google Sign-In 9.2.0 декларирует в bundled privacy manifest: Name, Email Address, Phone Number, User ID, Coarse Location, Device ID, Other Data Types и Other Usage Data. Часть типов используется для App Functionality, а User ID, Device ID, Other Data Types и Other Usage Data также декларируются для Analytics. Tracking: No.
 
 Sign in with Apple также отправляет одноразовый authorization code на сервер Pickly для обмена на provider refresh token. Refresh token хранится только на сервере как credential для отзыва Apple connection при удалении аккаунта; он не попадает в приложение и не используется для tracking.
 
@@ -74,7 +75,39 @@ Sign in with Apple также отправляет одноразовый author
 
 4. **For what purposes do you or your third-party partners use User ID data?**
    - ✅ **App Functionality** (для account access and account-related functionality)
-   - ❌ Не выбирай: Analytics, Product Personalization, Advertising, Other
+   - ✅ **Analytics** (декларируется bundled manifest Google Sign-In SDK)
+   - ❌ Не выбирай: Product Personalization, Advertising, Other
+
+**Выбери:** ✅ **Device ID**
+
+- Linked to identity: **Yes**
+- Tracking: **No**
+- Purpose: **Analytics** (декларируется bundled manifest Google Sign-In SDK)
+
+### 📍 Location
+
+**Выбери:** ✅ **Coarse Location**
+
+- Linked to identity: **Yes**
+- Tracking: **No**
+- Purpose: **App Functionality**
+- Pickly не запрашивает системное разрешение Location; эта декларация отражает connection data, указанное Google Sign-In SDK
+
+### 📱 Google Sign-In service data
+
+**Выбери:** ✅ **Phone Number**
+
+- Linked: **Yes**
+- Tracking: **No**
+- Purpose: **App Functionality**
+- Может присутствовать в выбранном Google account; Pickly напрямую его не запрашивает и не сохраняет в профиле
+
+**Выбери:** ✅ **Other Data Types** и ✅ **Other Usage Data**
+
+- Linked: **Yes**
+- Tracking: **No**
+- Purpose: **Analytics**
+- Для Other Data Types также отметь **App Functionality**
 
 ---
 
@@ -115,15 +148,13 @@ Apple покажет список категорий. **НЕ выбирай** с
 
 ❌ **Health & Fitness** — не собираем
 ❌ **Financial Info** — не собираем
-❌ **Location** — приложение не запрашивает геолокацию; сверить с финальным privacy report SDK
+❌ **Precise Location** — системное разрешение геолокации не запрашивается; Coarse Location раскрывается из-за Google Sign-In SDK
 ❌ **Sensitive Info** — не собираем
 ❌ **Contacts** — не собираем
 ❌ **User Content** — приложение не содержит UGC
 ❌ **Browsing History** — не собираем
 ❌ **Search History** — не хранится как история поиска; запросы, которые нужны для каталога, передаются как Product Interaction и должны быть сверены с фактическим Release flow
-❌ **Identifiers** → Device ID — приложение само его не запрашивает; сверить с финальным privacy report SDK
-❌ **Diagnostics** — отдельный crash-reporting SDK не подключён; сверить с финальным privacy report SDK
-❌ **Other Data** — не добавлять без подтверждения фактическим data flow
+❌ **Diagnostics** — отдельный crash-reporting SDK не подключён; Google service usage раскрывается как Other Usage Data по bundled manifest
 
 ---
 
@@ -140,15 +171,18 @@ Apple покажет список категорий. **НЕ выбирай** с
 - Name, если его реально получает выбранный provider
 - Product Interaction (linked из-за account-scoped product requests)
 - Purchase History (linked, App Functionality)
+- Phone Number и Coarse Location (linked, App Functionality, No tracking; Google Sign-In SDK)
+- Device ID (linked, Analytics, No tracking; Google Sign-In SDK)
+- Other Data Types (linked, App Functionality + Analytics, No tracking; Google Sign-In SDK)
+- Other Usage Data (linked, Analytics, No tracking; Google Sign-In SDK)
 
 **Data NOT Collected:**
-- ❌ Location
+- ❌ Precise Location
 - ❌ Contacts
 - ❌ Photos
 - ❌ Health
 - ❌ Financial Info
 - ❌ Browsing/Search History
-- ❌ Device ID
 - ❌ Advertising Data
 
 ---
@@ -171,7 +205,8 @@ Apple спросит: **"Do any third parties have access to data collected from
 
 3. **Google Sign-In** (если используется)
    - Purpose: Authentication
-   - Data shared: Email, Name (optional)
+   - Data processed according to the bundled SDK manifest: Name, Email Address, Phone Number, User ID, Coarse Location, Device ID, Other Data Types, Other Usage Data
+   - Tracking: No
 
 **Важно:** Укажи что все третьи стороны имеют собственные Privacy Policies и что данные используются только для функционала приложения.
 
@@ -193,8 +228,8 @@ Apple спросит: **"Do any third parties have access to data collected from
 ### ❌ НЕ выбирай "Advertising"
 Pickly не показывает рекламу и не использует advertising networks.
 
-### ❌ НЕ выбирай "Analytics"
-В текущем Release нет отдельного analytics SDK (Google Analytics, Firebase Analytics и т. п.).
+### ❌ Не добавляй рекламную аналитику
+В текущем Release нет Google Analytics, Firebase Analytics или рекламного SDK. Но для User ID, Device ID, Other Data Types и Other Usage Data нужно выбрать **Analytics**, потому что это прямо декларирует privacy manifest встроенного Google Sign-In SDK 9.2.0.
 
 ### ❌ НЕ выбирай "Search History"
 Поиск может передаваться каталогу для выполнения запроса, но Pickly не заявляет и не использует отдельную историю поиска или tracking-профиль. Сверь фактический Release data flow перед публикацией.
@@ -210,6 +245,7 @@ Pickly не показывает рекламу и не использует adv
 ✅ Product searches и barcodes → упомянуты в Privacy Policy
 ✅ Third parties (Supabase, Open Food Facts) → упомянуты в Privacy Policy
 ✅ StoreKit subscription status → упомянут в Privacy Policy
+✅ Google Sign-In service data and limited SDK analytics → упомянуты в Privacy Policy
 
 ---
 
