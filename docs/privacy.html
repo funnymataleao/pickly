@@ -74,14 +74,14 @@
 <body>
     <div class="container">
         <h1>Privacy Policy</h1>
-        <p class="last-updated">Last updated: August 10, 2026</p>
+        <p class="last-updated">Last updated: August 24, 2026</p>
         
         <div class="section">
             <h2>What Pickly Uses</h2>
             <p>Pickly uses the camera only after you start barcode scanning. Camera frames are processed for barcode recognition and are not stored by Pickly.</p>
-            <p>Search queries and barcodes may be sent to Supabase and Open Food Facts to look up product information. Those services receive the request metadata needed to provide a response.</p>
-            <p>If you are signed in and request a missing product, the barcode, product name, brand, and optional note you submit are stored in Supabase with your user ID so the request can be reviewed.</p>
-            <p>If you create an account, Pickly processes your email address, user ID, and any name supplied by Apple or Google for sign-in. Supabase stores the account record, while Pickly keeps the local session in the system Keychain. For Sign in with Apple, a one-time authorization code is sent to Pickly's server only to exchange it for a provider refresh token; that token is stored server-side so the Apple connection can be revoked when you delete your account.</p>
+            <p>Search queries and barcodes may be sent to Pickly's Cloudflare service and Open Food Facts to look up product information. Those services receive the request metadata needed to provide a response.</p>
+            <p>If you are signed in and request a missing product, the barcode, product name, brand, and optional note you submit are stored in Pickly's Cloudflare service with your user ID so the request can be reviewed.</p>
+            <p>If you create an account, Pickly processes your email address, user ID, and any name supplied by Apple or Google for sign-in. Firebase Authentication manages the account, while account-linked Pickly data is stored in Pickly's Cloudflare service. Pickly does not store long-lived Apple authorization codes or Apple refresh tokens. When you delete an Apple account, Pickly asks you to confirm with Apple again, uses the fresh authorization code to revoke the Apple connection, and then removes the Firebase account.</p>
             <p>When you choose Google Sign-In, Google's SDK may process account and service data described by its bundled privacy manifest, including name, email address, user ID, phone number when present on the selected Google account, coarse location, device identifiers, and other service usage data. Google declares these uses for sign-in functionality and limited SDK analytics, not advertising tracking. Pickly does not request location permission or use this data for advertising.</p>
             <p>If you use Pickly Plus, Apple processes the purchase. Pickly receives verified subscription status, not your payment details.</p>
         </div>
@@ -95,8 +95,8 @@
         <div class="section">
             <h2>Data Retention</h2>
             <p>Local saved products, history, and preferences remain on this device until you remove them, delete the app, or delete your account from Pickly.</p>
-            <p>Submitted product requests remain in Supabase while your account is active and are removed with the account.</p>
-            <p>Supabase account data remains while your account is active. Deleting your account requests removal of the server-side account, revokes the stored sign-in connection when applicable, and clears local Pickly data. App Store subscription billing is separate and must be managed through Apple.</p>
+            <p>Submitted product requests remain in Pickly's Cloudflare service while your account is active and are removed with the account.</p>
+            <p>Firebase account data remains while your account is active. Deleting your account removes account-linked data from Pickly's Cloudflare service, revokes the Apple connection when applicable, removes the Firebase account, and clears local Pickly data. If a server request is unavailable, the account stays active so you can retry. App Store subscription billing is separate and must be managed through Apple.</p>
             <p>Pickly does not sell personal information or use it for advertising tracking. Camera access is optional, and no contacts are requested.</p>
         </div>
         
@@ -106,7 +106,7 @@
             <ul style="margin-left: 20px; margin-bottom: 1em; color: #515154;">
                 <li><strong>Email Address:</strong> Used for account creation and sign-in (optional)</li>
                 <li><strong>Google Sign-In Service Data:</strong> Google may process account, device, coarse-location, and usage data required by its sign-in SDK when you choose Google Sign-In</li>
-                <li><strong>Product Searches and Barcodes:</strong> Sent to Supabase and Open Food Facts for product lookup</li>
+                <li><strong>Product Searches and Barcodes:</strong> Sent to Pickly's Cloudflare service and Open Food Facts for product lookup</li>
                 <li><strong>Product Requests:</strong> Product details and optional notes are linked to your account when you submit a missing-product request</li>
                 <li><strong>Saved Products:</strong> Stored locally on your device</li>
                 <li><strong>Preferences:</strong> Stored locally on your device</li>
@@ -120,11 +120,12 @@
             <p>Pickly uses the following third-party services:</p>
             <ul style="margin-left: 20px; margin-bottom: 1em; color: #515154;">
                 <li><strong>Open Food Facts:</strong> Product information lookup service</li>
-                <li><strong>Supabase:</strong> Backend infrastructure for optional account features</li>
+                <li><strong>Firebase Authentication:</strong> Optional account authentication</li>
+                <li><strong>Cloudflare:</strong> Product catalog and account-linked request storage</li>
                 <li><strong>Google Sign-In:</strong> Optional authentication method</li>
                 <li><strong>Sign in with Apple:</strong> Optional authentication method</li>
             </ul>
-            <p>Supabase receives account data needed for authentication. Pickly's server stores an Apple provider refresh token only when needed to revoke the connection during account deletion. Apple and Google provide identity data when you choose their sign-in methods. Google's sign-in SDK also declares limited service analytics and device or connection data in its privacy manifest. These services have their own privacy policies governing the use of your information.</p>
+            <p>Firebase Authentication receives account data needed for sign-in. Cloudflare receives product lookup requests and account-linked product requests. Pickly does not retain Apple authorization codes or refresh tokens; a fresh code is used transiently during account deletion to revoke the Apple connection. Apple and Google provide identity data when you choose their sign-in methods. Google's sign-in SDK also declares limited service analytics and device or connection data in its privacy manifest. These services have their own privacy policies governing the use of your information.</p>
         </div>
 
         <div class="section">
