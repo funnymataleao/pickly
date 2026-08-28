@@ -2182,7 +2182,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Konto przechowuje żądania produktów, które można przypisać i chronić zgodnie z zasadami prywatności firmy Pincy."
+            "value": "Konto przechowuje żądania produktów, które można przypisać i chronić zgodnie z zasadami prywatności firmy Pickly."
           }
         },
         "cs": {
@@ -2600,7 +2600,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apple wymaga niedawnego logowania zanim Pincy będzie mógł trwale usunąć to konto. Twoje konto pozostaje aktywne do czasu potwierdzenia."
+            "value": "Apple wymaga niedawnego logowania, zanim Pickly będzie mógł trwale usunąć to konto. Twoje konto pozostaje aktywne do czasu potwierdzenia."
           }
         },
         "cs": {
@@ -4256,7 +4256,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sprawdź swój e-mail, aby uzyskać bezpieczne połączenie reset hasła, a następnie wróć do Pincy, aby się zalogować."
+            "value": "Sprawdź swój e-mail, aby uzyskać bezpieczny link do resetowania hasła, a następnie wróć do Pickly, aby się zalogować."
           }
         },
         "cs": {
@@ -5330,7 +5330,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zaufanie odzwierciedla kompletność i spójność dostępnych danych dotyczących żywienia i składników. Jeśli brakuje cukru, soli lub tłuszczów nasyconych, Pincy pokazuje Ograniczone dane zamiast liczbowego wyniku."
+            "value": "Zaufanie odzwierciedla kompletność i spójność dostępnych danych dotyczących żywienia i składników. Jeśli brakuje cukru, soli lub tłuszczów nasyconych, Pickly pokazuje ograniczone dane zamiast liczbowego wyniku."
           }
         },
         "cs": {
@@ -6274,7 +6274,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tworzy lub otwiera Twoje konto Pincy przy użyciu Twojego konta Apple."
+            "value": "Tworzy lub otwiera Twoje konto Pickly przy użyciu Twojego konta Apple."
           }
         },
         "cs": {
@@ -7988,7 +7988,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dane z konta Firebase pozostają podczas aktywacji konta. Usuwanie Twojego konta usuwa dane powiązane z rachunkiem z usługi Cloudflall firmy Pincy, w stosownych przypadkach cofa połączenie Apple, usuwa konto Firebase i usuwa lokalne dane. Apple może poprosić o potwierdzenie swojej tożsamości przed usunięciem. Jeśli żądanie serwera jest niedostępne, Twoje konto pozostaje aktywne, więc możesz spróbować ponownie. Abonament App Store jest odrębny i musi być zarządzany za pośrednictwem Apple."
+            "value": "Dane z konta Firebase pozostają podczas aktywacji konta. Usuwanie Twojego konta usuwa dane powiązane z kontem z usługi Cloudflare firmy Pickly, w stosownych przypadkach cofa połączenie Apple, usuwa konto Firebase i usuwa lokalne dane. Apple może poprosić o potwierdzenie swojej tożsamości przed usunięciem. Jeśli żądanie serwera jest niedostępne, Twoje konto pozostaje aktywne, więc możesz spróbować ponownie. Abonament App Store jest odrębny i musi być zarządzany za pośrednictwem Apple."
           }
         },
         "cs": {
@@ -10788,7 +10788,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jeśli jesteś zalogowany i żądasz brakującego produktu, kod kreskowy, nazwę produktu, markę i opcjonalną notatkę, którą składasz, są przechowywane w usłudze Cloudflare firmy Pincy z identyfikatorem użytkownika, dzięki czemu wniosek może zostać zweryfikowany."
+            "value": "Jeśli jesteś zalogowany i żądasz brakującego produktu, kod kreskowy, nazwę produktu, markę i opcjonalną notatkę, którą składasz, są przechowywane w usłudze Cloudflare firmy Pickly wraz z identyfikatorem użytkownika, dzięki czemu wniosek może zostać zweryfikowany."
           }
         },
         "cs": {
@@ -10848,7 +10848,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jeśli utworzyć konto, Firebase przetwarza swój adres e-mail, ID użytkownika i wszelkie nazwy dostarczone przez Apple lub Google do sign- in. Pilnie zachowuje lokalną sesję zarządzaną przez Firebase, podczas gdy związane z rachunkami żądania produktów są przechowywane w usłudze Cloudflall firmy Pincy. Nie przechowuje długożyciowych kodów autoryzacyjnych Apple ani żetonów odświeżających."
+            "value": "Jeśli utworzysz konto, Firebase przetwarza Twój adres e-mail, identyfikator użytkownika i nazwę dostarczoną przez Apple lub Google podczas logowania. Pickly przechowuje lokalną sesję zarządzaną przez Firebase, a żądania produktów powiązane z kontem są przechowywane w usłudze Cloudflare firmy Pickly. Pickly nie przechowuje długoterminowych kodów autoryzacji Apple ani tokenów odświeżania."
           }
         },
         "cs": {
@@ -10882,31 +10882,31 @@
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Si tiene Pickly Plus, use Gestion Subscription antes de eliminar su cuenta si no desea que la facturación de Apple renueve. Eliminar una cuenta Pickly no cancela una suscripción de App Store."
+            "value": "Si tiene Pickly Plus, use Gestionar suscripción antes de eliminar su cuenta si no desea que Apple renueve la facturación. Eliminar una cuenta de Pickly no cancela una suscripción del App Store."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se si dispone di Pickly Plus, utilizzare Gestisci abbonamento prima di cancellare il tuo account se non si desidera che Apple fatturazione di rinnovare. Cancellare un account Pickly non cancella un abbonamento App Store."
+            "value": "Se hai Pickly Plus, usa Gestisci l’abbonamento prima di eliminare il tuo account se non vuoi che Apple rinnovi la fatturazione. Eliminare un account Pickly non annulla un abbonamento dell’App Store."
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se você tiver Pickly Plus, use Gerenciar Assinatura antes de excluir sua conta se você não quiser que a Apple renove. Excluir uma conta Pickly não cancela uma assinatura da App Store."
+            "value": "Se tiver o Pickly Plus, use Gerir a subscrição antes de apagar a sua conta se não quiser que a Apple renove a cobrança. Apagar uma conta Pickly não cancela uma subscrição da App Store."
           }
         },
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hvis du har Pickly Plus, skal du bruge Administrer Abonnement før du sletter din konto, hvis du ikke ønsker Apple fakturering at forny. Sletning af en Pickly-konto annullerer ikke et App Store-abonnement."
+            "value": "Hvis du har Pickly Plus, skal du bruge Administrer abonnementet, før du sletter din konto, hvis du ikke vil have Apple til at forny betalingen. Sletning af en Pickly-konto annullerer ikke et App Store-abonnement."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jeśli masz Pincy Plus, użyj Subskrypcji Zarządzaj przed usunięciem konta, jeśli nie chcesz, aby Apple wystawianie rachunków odnowiło. Usuwanie konta Pincy nie anuluje subskrypcji App Store."
+            "value": "Jeśli masz Pickly Plus, użyj opcji Zarządzaj subskrypcją przed usunięciem konta, jeśli nie chcesz, aby Apple odnowiło płatność. Usunięcie konta Pickly nie anuluje subskrypcji App Store."
           }
         },
         "cs": {
@@ -10964,7 +10964,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jeśli używasz Pincy Plus, Apple przetwarza zakup. Picuś sprawdza zweryfikowany status subskrypcji na tym urządzeniu poprzez StoreKit i nie wysyła historii transakcji lub zakupu do serwerów Pincusa."
+            "value": "Jeśli używasz Pickly Plus, Apple przetwarza zakup. Pickly sprawdza zweryfikowany status subskrypcji na tym urządzeniu za pośrednictwem StoreKit i nie wysyła historii transakcji ani zakupów na serwery Pickly."
           }
         },
         "cs": {
@@ -11024,7 +11024,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jeśli używasz Pincy Plus, Apple przetwarza zakup. Pincy otrzymuje zweryfikowany status subskrypcji, a nie szczegóły płatności."
+            "value": "Jeśli używasz Pickly Plus, Apple przetwarza zakup. Pickly otrzymuje zweryfikowany status subskrypcji, a nie dane płatności."
           }
         },
         "cs": {
@@ -12194,7 +12194,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wczytywanie Pincy Plus"
+            "value": "Wczytywanie Pickly Plus"
           }
         },
         "cs": {
@@ -12434,7 +12434,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lokalne zapisywane produkty, historia i preferencje pozostają na tym urządzeniu do czasu ich usunięcia, usunięcia aplikacji lub usunięcia konta z firmy Pincy."
+            "value": "Lokalnie zapisane produkty, historia i preferencje pozostają na tym urządzeniu do czasu ich usunięcia, usunięcia aplikacji lub usunięcia konta Pickly."
           }
         },
         "cs": {
@@ -15768,7 +15768,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Otwiera opcje subskrypcji Pincy Plus."
+            "value": "Otwiera opcje subskrypcji Pickly Plus."
           }
         },
         "cs": {
@@ -15828,7 +15828,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Otwiera Pincy Plus, aby ujawnić ten produkt."
+            "value": "Otwiera Pickly Plus, aby wyświetlić ten produkt."
           }
         },
         "cs": {
@@ -18012,7 +18012,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pincy używa kamery dopiero po rozpoczęciu skanowania kodów kreskowych. Ramki kamery są przetwarzane do rozpoznawania kodów kreskowych i nie są przechowywane przez Pincy."
+            "value": "Pickly używa kamery dopiero po rozpoczęciu skanowania kodów kreskowych. Obrazy z kamery są przetwarzane w celu rozpoznawania kodów kreskowych i nie są przechowywane przez Pickly."
           }
         },
         "cs": {
@@ -22546,7 +22546,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wysyła bezpieczny link do resetowania hasła. Zakończ reset w e-mailu, a następnie wróć do Pincy, aby się zalogować."
+            "value": "Wysyła bezpieczny link do resetowania hasła. Dokończ resetowanie w wiadomości e-mail, a następnie wróć do Pickly, aby się zalogować."
           }
         },
         "cs": {
@@ -23074,7 +23074,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zaloguj się do Pincy"
+            "value": "Zaloguj się do Pickly"
           }
         },
         "cs": {
@@ -24828,7 +24828,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Otwiera wybraną subskrypcję Pincy Plus."
+            "value": "Otwiera wybraną subskrypcję Pickly Plus."
           }
         },
         "cs": {
@@ -24888,7 +24888,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zgłoszone żądania produktów pozostają w serwisie Cloudflare firmy Pincy, podczas gdy Twoje konto jest aktywne i są usuwane z kontem."
+            "value": "Zgłoszone żądania produktów pozostają w serwisie Cloudflare firmy Pickly, podczas gdy Twoje konto jest aktywne, i są usuwane wraz z kontem."
           }
         },
         "cs": {
@@ -25364,7 +25364,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Synchronizacja zakupów Pincy Plus z App Store."
+            "value": "Synchronizacja zakupów Pickly Plus z App Store."
           }
         },
         "cs": {
@@ -25890,7 +25890,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "To na stałe usuwa dane Twojego konta i profilu serwera. Lokalne produkty zapisane zostaną również oczyszczone. Jeśli masz Pincy Plus, rozliczenie trwa przez Apple do odwołania. Zarządzaj subskrypcją przed usunięciem, jeśli nie chcesz, aby się odnowiła."
+            "value": "To na stałe usuwa dane Twojego konta i profilu serwera. Lokalne zapisane produkty zostaną również usunięte. Jeśli masz Pickly Plus, rozliczenia przez Apple będą trwały do momentu anulowania. Zarządzaj subskrypcją przed usunięciem konta, jeśli nie chcesz jej odnowienia."
           }
         },
         "cs": {
@@ -27884,7 +27884,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Co Pincy używa"
+            "value": "Czego używa Pickly"
           }
         },
         "cs": {
@@ -28174,7 +28174,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Podczas korzystania z opcjonalnego logowania konta, Firebase przetwarza swój adres e-mail, ID użytkownika i wszelkie nazwy dostarczone przez Apple lub Google. Firebase Authentication 's between privacy manifest deklaruje również inne dane diagnostyczne wykorzystywane do analizy; dane te nie są powiązane z Twoją tożsamością i nie są wykorzystywane do śledzenia. Pilnie zachowuje lokalną sesję zarządzaną przez Firebase, podczas gdy związane z rachunkami żądania produktów są przechowywane w usłudze Cloudflall firmy Pincy. Nie przechowuje długożyciowych kodów autoryzacyjnych Apple ani żetonów odświeżających."
+            "value": "Podczas korzystania z opcjonalnego logowania Firebase przetwarza Twój adres e-mail, identyfikator użytkownika i nazwy dostarczone przez Apple lub Google. Manifest prywatności Firebase Authentication deklaruje również inne dane diagnostyczne wykorzystywane do analizy; dane te nie są powiązane z Twoją tożsamością i nie są wykorzystywane do śledzenia. Pickly przechowuje lokalną sesję zarządzaną przez Firebase, a żądania produktów powiązane z kontem są przechowywane w usłudze Cloudflare firmy Pickly. Pickly nie przechowuje długoterminowych kodów autoryzacji Apple ani tokenów odświeżania."
           }
         },
         "cs": {
