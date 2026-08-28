@@ -9,39 +9,60 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
         var errorDescription: String? {
             switch self {
             case .notFound:
-                "Product not found."
+                PicklyCopy.localized("Product not found.")
             }
         }
     }
 
     @Published private(set) var products: [Product] = []
     @Published private(set) var isLoading = false
-    @Published private(set) var isLoadingGoalRecommendations = false
-    @Published private(set) var goalRecommendationsErrorMessage: String?
+    @Published private(set) var loadingGoalRecommendations = Set<GroceryGoal>()
+    @Published private(set) var goalRecommendationErrors: [GroceryGoal: String] = [:]
+    @Published private(set) var goalRecommendationProductIDs: [GroceryGoal: [String]] = [:]
+    @Published private(set) var goalRecommendationTotals: [GroceryGoal: Int] = [:]
+    @Published private(set) var goalRecommendationPages: [GroceryGoal: Int] = [:]
+    @Published private(set) var goalsWithMoreRecommendations = Set<GroceryGoal>()
     @Published private(set) var errorMessage: String?
+    @Published private(set) var relatedProductsErrorMessage: String?
     @Published private(set) var hasLoaded = false
 
-    private let supabaseService: SupabaseProductService
+    private let catalogService: CloudflareProductService
     private let openFoodFactsService: OpenFoodFactsService
+    private let localeContext: PicklyLocaleContext
     private let fallbackProducts: [Product]
     private let remoteEnabled: Bool
     private let prototypeFallbackEnabled: Bool
     private var loadedQueries = Set<String>()
     private var loadedRelatedCategories = Set<String>()
     private var relatedProductIDsByCategory: [String: [String]] = [:]
-    private var loadedGoalQueries = Set<String>()
+    private var loadedGoalQueries = Set<GroceryGoal>()
+    private var goalLoadTasks: [GroceryGoal: Task<Void, Never>] = [:]
+
+    var isLoadingGoalRecommendations: Bool {
+        !loadingGoalRecommendations.isEmpty
+    }
+
+    var goalRecommendationsErrorMessage: String? {
+        goalRecommendationErrors.values.first
+    }
 
     init(
-        supabaseService: SupabaseProductService = SupabaseProductService(),
-        openFoodFactsService: OpenFoodFactsService = OpenFoodFactsService(),
+        catalogService: CloudflareProductService,
+        openFoodFactsService: OpenFoodFactsService? = nil,
         fallbackProducts: [Product]? = nil,
         remoteEnabled: Bool? = nil,
-        prototypeFallbackEnabled: Bool? = nil
+        prototypeFallbackEnabled: Bool? = nil,
+        localeContext: PicklyLocaleContext = .current
     ) {
-        self.supabaseService = supabaseService
-        self.openFoodFactsService = openFoodFactsService
-        let resolvedFallbackProducts = fallbackProducts ?? MockProductService().products
-        let resolvedRemoteEnabled = remoteEnabled ?? SupabaseCredentials.isConfigured
+        self.localeContext = localeContext
+        self.catalogService = catalogService
+        self.openFoodFactsService = openFoodFactsService ?? OpenFoodFactsService(
+            goalProxyBaseURL: PicklyAPIConfiguration.baseURL,
+            localeContext: localeContext
+        )
+        let resolvedFallbackProducts = (fallbackProducts ?? MockProductService().products)
+            .map { $0.localizedPresentation(localeContext: localeContext) }
+        let resolvedRemoteEnabled = remoteEnabled ?? PicklyAPIConfiguration.isConfigured
         #if DEBUG
         let resolvedPrototypeFallbackEnabled = prototypeFallbackEnabled ?? true
         #else
@@ -59,6 +80,23 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
         self.hasLoaded = !resolvedRemoteEnabled && resolvedPrototypeFallbackEnabled
     }
 
+    convenience init(
+        openFoodFactsService: OpenFoodFactsService? = nil,
+        fallbackProducts: [Product]? = nil,
+        remoteEnabled: Bool? = nil,
+        prototypeFallbackEnabled: Bool? = nil,
+        localeContext: PicklyLocaleContext = .current
+    ) {
+        self.init(
+            catalogService: CloudflareProductService(localeContext: localeContext),
+            openFoodFactsService: openFoodFactsService,
+            fallbackProducts: fallbackProducts,
+            remoteEnabled: remoteEnabled,
+            prototypeFallbackEnabled: prototypeFallbackEnabled,
+            localeContext: localeContext
+        )
+    }
+
     static var preview: ProductCatalogStore {
         ProductCatalogStore(
             fallbackProducts: MockProductService().products,
@@ -73,7 +111,7 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
         guard remoteEnabled else {
             products = prototypeFallbackEnabled ? fallbackProducts : []
             if !prototypeFallbackEnabled {
-                errorMessage = "Product catalog is not configured for this build yet."
+                errorMessage = PicklyCopy.localized("Product catalog is not configured for this build yet.")
             }
             hasLoaded = true
             return
@@ -87,16 +125,16 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
         }
 
         do {
-            let remoteProducts = try await supabaseService.fetchPublishedProducts()
+            let remoteProducts = try await catalogService.fetchPublishedProducts()
             if remoteProducts.isEmpty {
                 products = []
-                errorMessage = "No catalog products are available right now."
+                errorMessage = PicklyCopy.localized("No catalog products are available right now.")
             } else {
                 merge(remoteProducts)
             }
         } catch {
             products = []
-            errorMessage = "Couldn't load product data. Check your connection and try again."
+            errorMessage = PicklyCopy.localized("Couldn't load product data. Check your connection and try again.")
         }
     }
 
@@ -104,6 +142,7 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
         let normalizedQuery = query
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
+        let cacheKey = "\(localeContext.language.rawValue)|\(localeContext.regionCode)|\(normalizedQuery)"
 
         guard normalizedQuery.count >= 2 else {
             return
@@ -111,17 +150,17 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
 
         guard remoteEnabled else {
             if !prototypeFallbackEnabled {
-                errorMessage = "Product catalog is not configured for this build yet."
+                errorMessage = PicklyCopy.localized("Product catalog is not configured for this build yet.")
             }
             return
         }
 
-        guard !loadedQueries.contains(normalizedQuery) else {
+        guard !loadedQueries.contains(cacheKey) else {
             return
         }
 
         if !searchProducts(matching: normalizedQuery).isEmpty {
-            loadedQueries.insert(normalizedQuery)
+            loadedQueries.insert(cacheKey)
             return
         }
 
@@ -130,7 +169,7 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
         defer { isLoading = false }
 
         do {
-            let catalogProducts = try await supabaseService.searchPublishedProducts(matching: query)
+            let catalogProducts = try await catalogService.searchPublishedProducts(matching: query)
             merge(catalogProducts)
 
             if catalogProducts.isEmpty {
@@ -138,18 +177,18 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
                 merge(fetchedProducts)
             }
 
-            loadedQueries.insert(normalizedQuery)
+            loadedQueries.insert(cacheKey)
         } catch let error as OpenFoodFactsService.ServiceError {
             errorMessage = error.errorDescription
         } catch {
             do {
                 let fetchedProducts = try await openFoodFactsService.searchProducts(matching: query)
                 merge(fetchedProducts)
-                loadedQueries.insert(normalizedQuery)
+                loadedQueries.insert(cacheKey)
             } catch let error as OpenFoodFactsService.ServiceError {
                 errorMessage = error.errorDescription
             } catch {
-                errorMessage = "Couldn't load product data. Check your connection and try again."
+                errorMessage = PicklyCopy.localized("Couldn't load product data. Check your connection and try again.")
             }
         }
     }
@@ -164,12 +203,12 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
         }
 
         do {
-            if let remoteProduct = try await supabaseService.fetchProduct(barcode: barcode) {
+            if let remoteProduct = try await catalogService.fetchProduct(barcode: barcode) {
                 merge([remoteProduct])
                 return remoteProduct
             }
         } catch {
-            // A cache miss or a temporary Supabase failure falls back to Open Food Facts.
+            // A cache miss or a temporary catalog failure falls back to Open Food Facts.
         }
 
         let fetchedProduct = try await openFoodFactsService.fetchProduct(barcode: barcode)
@@ -189,8 +228,8 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
 
         return products
             .filter { candidate in
-                candidate.id != product.id
-                    && candidate.category.caseInsensitiveCompare(product.category) == .orderedSame
+                !ProductIdentity.isSame(candidate, as: product)
+                    && ProductSimilarity.isComparable(candidate, to: product)
                     && !candidate.isLimitedData
                     && (candidate.score ?? 0) > score
             }
@@ -200,17 +239,27 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
     }
 
     func relatedProducts(for product: Product, limit: Int) async -> [Product] {
-        let categoryKey = product.category
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
+        relatedProductsErrorMessage = nil
+        let searchTexts = RelatedProductQuery.searchTexts(for: product)
+        let categoryTags = RelatedProductQuery.categoryTags(for: product)
+        let marketCountryTags = localeContext.preferredCountryTags
+        // Reuse one fetched pool across products from the same semantic family.
+        // Using the full product name here caused every tapped card to launch
+        // another three network searches while the navigation transition ran.
+        let categoryKey = RelatedProductQuery.cacheKey(for: product)
+            + "|language:\(localeContext.language.rawValue)|markets:\(marketCountryTags.joined(separator: ","))"
         let fetchedMatches = relatedProductIDsByCategory[categoryKey, default: []]
             .compactMap { self.product(id: $0) }
-        let localProducts = RelatedProductRanker.products(
+        let explicitLocalAlternatives = product.alternativeIDs.compactMap { self.product(id: $0) }
+            + fetchedMatches
+        let catalogSnapshot = products
+        let localProducts = await Self.rankRelatedProducts(
             for: product,
-            explicitAlternatives: alternatives(for: product) + fetchedMatches,
-            catalog: products,
+            explicitAlternatives: explicitLocalAlternatives,
+            catalog: catalogSnapshot,
             limit: limit
         )
+        guard !Task.isCancelled else { return localProducts }
         guard limit > localProducts.count, remoteEnabled else {
             return localProducts
         }
@@ -218,135 +267,397 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
         guard !categoryKey.isEmpty else { return localProducts }
 
         if !loadedRelatedCategories.contains(categoryKey) {
-            do {
-                let fetchedProducts = try await openFoodFactsService.searchProducts(
-                    matching: product.category,
-                    pageSize: min(50, max(limit + 10, 30))
-                )
-                let usableFetchedProducts = fetchedProducts.filter {
-                    $0.name != "Unknown product" && $0.imageURL != nil
+            var fetchedProducts: [Product] = []
+            var completedSearch = false
+            var encounteredFailure = false
+
+            // Better Choices is a paid trust surface: only canonical OFF
+            // taxonomy is allowed for live products. Prefer the user's market,
+            // then an English market, then the global catalog.
+            let countryTiers: [String?] = marketCountryTags.map(Optional.some) + [nil]
+            for countryTag in countryTiers {
+                for categoryTag in categoryTags {
+                    var page = 1
+                    let maximumPages = min(5, max(2, Int(ceil(Double(limit) / 50.0)) + 2))
+                    while page <= maximumPages {
+                        guard !Task.isCancelled else { return localProducts }
+                        do {
+                            let resultPage = try await openFoodFactsService.searchProductPage(
+                                categoryTag: categoryTag,
+                                pageSize: 50,
+                                page: page,
+                                countryTag: countryTag
+                            )
+                            completedSearch = true
+                            fetchedProducts.append(contentsOf: resultPage.products)
+
+                            if Self.usableRelatedCandidates(in: fetchedProducts, for: product).count >= limit
+                                || !resultPage.hasMore {
+                                break
+                            }
+                            page = max(page + 1, resultPage.page + 1)
+                        } catch {
+                            encounteredFailure = true
+                            break
+                        }
+                    }
+
+                    if Self.usableRelatedCandidates(in: fetchedProducts, for: product).count >= limit {
+                        break
+                    }
                 }
-                merge(usableFetchedProducts)
-                relatedProductIDsByCategory[categoryKey] = usableFetchedProducts.map(\.id)
-                loadedRelatedCategories.insert(categoryKey)
-            } catch {
-                return localProducts
+
+                if Self.usableRelatedCandidates(in: fetchedProducts, for: product).count >= limit {
+                    break
+                }
             }
-        }
 
-        return RelatedProductRanker.products(
-            for: product,
-            explicitAlternatives: alternatives(for: product)
-                + relatedProductIDsByCategory[categoryKey, default: []].compactMap { self.product(id: $0) },
-            catalog: products,
-            limit: limit
-        )
-    }
-
-    func loadGoalRecommendations(for goals: [GroceryGoal], limit: Int) async {
-        guard remoteEnabled, limit > 0, !goals.isEmpty, !isLoadingGoalRecommendations else { return }
-
-        let goalsToLoad = goals.filter {
-            let queryKey = $0.catalogSearchQuery.lowercased()
-            let existingMatches = GroceryGoal.matchingProducts(
-                in: products,
-                filter: $0,
-                preferredGoals: goals
-            )
-            return !loadedGoalQueries.contains(queryKey) && existingMatches.count < limit
-        }
-        guard !goalsToLoad.isEmpty else { return }
-
-        isLoadingGoalRecommendations = true
-        goalRecommendationsErrorMessage = nil
-        defer { isLoadingGoalRecommendations = false }
-
-        let service = openFoodFactsService
-        let pageSize = min(30, max(limit, 12))
-        let results = await withTaskGroup(
-            of: GoalRecommendationResult.self,
-            returning: [GoalRecommendationResult].self
-        ) { group in
-            var iterator = goalsToLoad.makeIterator()
-
-            func addNextTask() {
-                guard let goal = iterator.next() else { return }
-
-                group.addTask {
+            // Text fallback is permitted only for local fixtures/curated data.
+            // A live OFF product without trustworthy taxonomy fails closed.
+            if categoryTags.isEmpty,
+               product.source != .openFoodFacts,
+               Self.usableRelatedCandidates(in: fetchedProducts, for: product).count < limit {
+                for query in searchTexts {
+                    guard !Task.isCancelled else { return localProducts }
+                    let queryProducts: [Product]
                     do {
-                        let fetchedProducts = try await service.searchProducts(
-                            matching: goal.catalogSearchQuery,
-                            pageSize: pageSize
+                        queryProducts = try await openFoodFactsService.searchProducts(
+                            matching: query,
+                            pageSize: 50
                         )
-                        return GoalRecommendationResult(
-                            queryKey: goal.catalogSearchQuery.lowercased(),
-                            products: fetchedProducts.filter {
-                                $0.name != "Unknown product" && $0.imageURL != nil
-                            },
-                            succeeded: true
-                        )
+                        completedSearch = true
                     } catch {
-                        return GoalRecommendationResult(
-                            queryKey: goal.catalogSearchQuery.lowercased(),
-                            products: [],
-                            succeeded: false
-                        )
+                        encounteredFailure = true
+                        continue
+                    }
+                    guard !Task.isCancelled else { return localProducts }
+                    fetchedProducts.append(contentsOf: queryProducts)
+
+                    if Self.usableRelatedCandidates(in: fetchedProducts, for: product).count >= limit {
+                        break
                     }
                 }
             }
 
-            for _ in 0..<min(3, goalsToLoad.count) {
-                addNextTask()
+            var seenKeys = Set<String>()
+            let usableFetchedProducts = fetchedProducts.filter {
+                $0.name != "Unknown product"
+                    && $0.imageURL != nil
+                    && seenKeys.insert(ProductIdentity.key(for: $0)).inserted
             }
-
-            var completed: [GoalRecommendationResult] = []
-            while let result = await group.next() {
-                completed.append(result)
-                addNextTask()
+            let comparableFetchedProducts = Self.usableRelatedCandidates(
+                in: usableFetchedProducts,
+                for: product
+            )
+            let canonicalIDs = merge(comparableFetchedProducts)
+            var seenCanonicalIDs = Set<String>()
+            relatedProductIDsByCategory[categoryKey] = comparableFetchedProducts.compactMap {
+                let canonicalID = canonicalIDs[$0.id] ?? $0.id
+                return seenCanonicalIDs.insert(canonicalID).inserted ? canonicalID : nil
             }
-            return completed
+            if completedSearch, !encounteredFailure, !comparableFetchedProducts.isEmpty {
+                loadedRelatedCategories.insert(categoryKey)
+            }
+            if encounteredFailure || !completedSearch {
+                relatedProductsErrorMessage = PicklyCopy.localized("The product catalog is temporarily unavailable. Check your connection and try again.")
+            }
         }
 
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return localProducts }
+        let updatedExplicitAlternatives = product.alternativeIDs.compactMap { self.product(id: $0) }
+            + relatedProductIDsByCategory[categoryKey, default: []].compactMap { self.product(id: $0) }
+        let updatedCatalogSnapshot = products
+        return await Self.rankRelatedProducts(
+            for: product,
+            explicitAlternatives: updatedExplicitAlternatives,
+            catalog: updatedCatalogSnapshot,
+            limit: limit
+        )
+    }
 
-        let successfulResults = results.filter(\.succeeded)
-        merge(successfulResults.flatMap(\.products))
-        loadedGoalQueries.formUnion(successfulResults.map(\.queryKey))
+    private nonisolated static func rankRelatedProducts(
+        for product: Product,
+        explicitAlternatives: [Product],
+        catalog: [Product],
+        limit: Int
+    ) async -> [Product] {
+        await Task.detached(priority: .userInitiated) {
+            RelatedProductRanker.products(
+                for: product,
+                explicitAlternatives: explicitAlternatives,
+                catalog: catalog,
+                limit: limit
+            )
+        }.value
+    }
 
-        if successfulResults.isEmpty {
-            goalRecommendationsErrorMessage = "Couldn't refresh goal matches. Check your connection and try again."
+    private nonisolated static func usableRelatedCandidates(
+        in products: [Product],
+        for currentProduct: Product
+    ) -> [Product] {
+        var seenIDs = Set<String>()
+        return products.filter { candidate in
+            candidate.id != currentProduct.id
+                && candidate.barcode != currentProduct.barcode
+                && candidate.name != "Unknown product"
+                && candidate.imageURL != nil
+                && !candidate.isLimitedData
+                && ProductSimilarity.isComparable(candidate, to: currentProduct)
+                && seenIDs.insert(candidate.id).inserted
         }
+    }
+
+    func goalProducts(
+        for filter: GroceryGoal,
+        preferredGoals: [GroceryGoal]
+    ) -> [Product] {
+        let sourceGoals = filter == .all ? preferredGoals : [filter]
+        var seenIDs = Set<String>()
+        let scopedProducts = sourceGoals
+            .flatMap { goalRecommendationProductIDs[$0, default: []] }
+            .compactMap { product(id: $0) }
+            .filter { seenIDs.insert($0.id).inserted }
+
+        if !scopedProducts.isEmpty {
+            if filter == .all {
+                return GroceryGoal.healthiestMatchingProducts(
+                    in: scopedProducts,
+                    filter: filter,
+                    preferredGoals: preferredGoals
+                )
+            }
+
+            return GroceryGoal.rankedFeedProducts(
+                in: scopedProducts,
+                for: filter
+            )
+        }
+
+        let relevantGoals = Set(sourceGoals)
+        let hasScopedFailure = relevantGoals.contains { goalRecommendationErrors[$0] != nil }
+        guard !hasScopedFailure, !remoteEnabled else { return [] }
+
+        // Preview and explicit offline fixtures can still exercise the goal UI
+        // without networking. A live build never substitutes its shared base
+        // catalog for a goal-specific Open Food Facts feed.
+        return GroceryGoal.healthiestMatchingProducts(
+            in: products,
+            filter: filter,
+            preferredGoals: preferredGoals
+        )
+    }
+
+    func isLoadingGoalRecommendation(
+        for filter: GroceryGoal,
+        preferredGoals: [GroceryGoal]
+    ) -> Bool {
+        let relevantGoals = filter == .all ? preferredGoals : [filter]
+        return relevantGoals.contains { loadingGoalRecommendations.contains($0) }
+    }
+
+    func goalRecommendationError(
+        for filter: GroceryGoal,
+        preferredGoals: [GroceryGoal]
+    ) -> String? {
+        let relevantGoals = filter == .all ? preferredGoals : [filter]
+        return relevantGoals.compactMap { goalRecommendationErrors[$0] }.first
+    }
+
+    func goalRecommendationTotal(
+        for filter: GroceryGoal,
+        preferredGoals: [GroceryGoal]
+    ) -> Int? {
+        if filter != .all {
+            return goalRecommendationTotals[filter]
+        }
+
+        let totals = preferredGoals.compactMap { goalRecommendationTotals[$0] }
+        return totals.isEmpty ? nil : totals.reduce(0, +)
+    }
+
+    func hasMoreGoalRecommendations(for goal: GroceryGoal) -> Bool {
+        goalsWithMoreRecommendations.contains(goal)
+    }
+
+    func loadGoalRecommendations(for goals: [GroceryGoal], limit: Int) async {
+        guard remoteEnabled, limit > 0 else { return }
+
+        // Keep requests sequential to respect Open Food Facts rate limits, but
+        // persist every goal page immediately so cancellation cannot erase the
+        // successful feeds loaded before it.
+        for goal in goals where goal != .all {
+            guard !Task.isCancelled else { return }
+            await enqueueGoalRecommendationLoad(
+                for: goal,
+                targetCount: limit,
+                maximumPages: limit > 50 ? 4 : 3
+            )
+        }
+    }
+
+    func loadMoreGoalRecommendations(for goal: GroceryGoal, pageSize: Int = 24) async {
+        guard goal != .all, goalsWithMoreRecommendations.contains(goal) else { return }
+        let currentCount = goalRecommendationProductIDs[goal, default: []].count
+        await enqueueGoalRecommendationLoad(
+            for: goal,
+            targetCount: currentCount + max(1, min(pageSize, 24)),
+            maximumPages: 1
+        )
     }
 
     func retryGoalRecommendations(for goals: [GroceryGoal], limit: Int) async {
-        loadedGoalQueries.subtract(goals.map { $0.catalogSearchQuery.lowercased() })
+        for goal in goals where goal != .all {
+            loadedGoalQueries.remove(goal)
+            goalRecommendationErrors.removeValue(forKey: goal)
+            goalRecommendationProductIDs.removeValue(forKey: goal)
+            goalRecommendationTotals.removeValue(forKey: goal)
+            goalRecommendationPages.removeValue(forKey: goal)
+            goalsWithMoreRecommendations.remove(goal)
+        }
         await loadGoalRecommendations(for: goals, limit: limit)
     }
 
-    private struct GoalRecommendationResult: Sendable {
-        let queryKey: String
-        let products: [Product]
-        let succeeded: Bool
+    private func enqueueGoalRecommendationLoad(
+        for goal: GroceryGoal,
+        targetCount: Int,
+        maximumPages: Int
+    ) async {
+        while true {
+            if let existingTask = goalLoadTasks[goal] {
+                await existingTask.value
+                guard !Task.isCancelled,
+                      goalRecommendationErrors[goal] == nil,
+                      goalRecommendationProductIDs[goal, default: []].count < targetCount,
+                      goalsWithMoreRecommendations.contains(goal) else {
+                    return
+                }
+                continue
+            }
+
+            let loadTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.performGoalRecommendationLoad(
+                    for: goal,
+                    targetCount: targetCount,
+                    maximumPages: maximumPages
+                )
+            }
+            goalLoadTasks[goal] = loadTask
+            await loadTask.value
+            goalLoadTasks.removeValue(forKey: goal)
+            return
+        }
     }
 
-    private func merge(_ incomingProducts: [Product]) {
-        guard !incomingProducts.isEmpty else { return }
+    private func performGoalRecommendationLoad(
+        for goal: GroceryGoal,
+        targetCount: Int,
+        maximumPages: Int
+    ) async {
+        let existingCount = goalRecommendationProductIDs[goal, default: []].count
+        guard remoteEnabled,
+              targetCount > 0,
+              maximumPages > 0,
+              !loadingGoalRecommendations.contains(goal),
+              existingCount < targetCount,
+              !loadedGoalQueries.contains(goal) || goalsWithMoreRecommendations.contains(goal) else {
+            return
+        }
+
+        loadingGoalRecommendations.insert(goal)
+        goalRecommendationErrors.removeValue(forKey: goal)
+        defer { loadingGoalRecommendations.remove(goal) }
+
+        let pageSize = 24
+        var nextPage = goalRecommendationPages[goal, default: 0] + 1
+        var pagesLoaded = 0
+        var loadedAnyPage = false
+
+        while goalRecommendationProductIDs[goal, default: []].count < targetCount,
+              pagesLoaded < maximumPages {
+            guard !Task.isCancelled else { return }
+
+            let resultPage: OpenFoodFactsProductPage
+            do {
+                resultPage = try await openFoodFactsService.searchProductPage(
+                    for: goal,
+                    pageSize: pageSize,
+                    page: nextPage,
+                    languageCode: localeContext.openFoodFactsLanguageCode
+                )
+            } catch {
+                guard !Task.isCancelled else { return }
+                goalRecommendationErrors[goal] = PicklyCopy.format(
+                    "Couldn't refresh %@ products. Check your connection and try again.",
+                    goal.title.lowercased()
+                )
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+            loadedAnyPage = true
+            pagesLoaded += 1
+            goalRecommendationTotals[goal] = resultPage.totalCount
+            goalRecommendationPages[goal] = resultPage.page
+
+            let usableProducts = resultPage.products.filter {
+                $0.name != "Unknown product"
+                    && $0.imageURL != nil
+                    && goal.matches($0)
+            }
+            let canonicalIDs = merge(usableProducts)
+
+            var orderedIDs = goalRecommendationProductIDs[goal, default: []]
+            var seenIDs = Set(orderedIDs)
+            for product in usableProducts {
+                let canonicalID = canonicalIDs[product.id] ?? product.id
+                if seenIDs.insert(canonicalID).inserted {
+                    orderedIDs.append(canonicalID)
+                }
+            }
+            goalRecommendationProductIDs[goal] = orderedIDs
+
+            if resultPage.hasMore {
+                goalsWithMoreRecommendations.insert(goal)
+            } else {
+                goalsWithMoreRecommendations.remove(goal)
+                break
+            }
+
+            nextPage = resultPage.page + 1
+        }
+
+        if loadedAnyPage,
+           (!goalRecommendationProductIDs[goal, default: []].isEmpty
+               || !goalsWithMoreRecommendations.contains(goal)) {
+            loadedGoalQueries.insert(goal)
+        }
+    }
+
+    @discardableResult
+    private func merge(_ incomingProducts: [Product]) -> [String: String] {
+        guard !incomingProducts.isEmpty else { return [:] }
 
         var merged = products
         var indexesByBarcode: [String: Int] = [:]
+        var canonicalIDs: [String: String] = [:]
         for (index, product) in merged.enumerated() {
             indexesByBarcode[product.barcode] = index
         }
 
         for incomingProduct in incomingProducts {
             if let index = indexesByBarcode[incomingProduct.barcode] {
-                merged[index] = incomingProduct
+                let existingID = merged[index].id
+                merged[index] = merged[index].mergingCatalogData(from: incomingProduct)
+                canonicalIDs[incomingProduct.id] = existingID
             } else {
                 indexesByBarcode[incomingProduct.barcode] = merged.count
                 merged.append(incomingProduct)
+                canonicalIDs[incomingProduct.id] = incomingProduct.id
             }
         }
 
         products = merged
+        return canonicalIDs
     }
 }

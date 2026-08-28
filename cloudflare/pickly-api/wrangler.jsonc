@@ -1,0 +1,19 @@
+{
+	"name": "pickly-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-08-22",
+	"vars": {
+		"FIREBASE_PROJECT_ID": "pickly-ios-20260822"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "pickly-production",
+			"database_id": "bb6ac0ea-3895-4e6c-ade8-bdcd217cd312",
+			"migrations_dir": "migrations"
+		}
+	],
+	"observability": {
+		"enabled": true,
+	},
+}

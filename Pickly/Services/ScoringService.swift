@@ -1,7 +1,11 @@
 import Foundation
 
 nonisolated struct ScoringService: Sendable {
-    init() {}
+    private let locale: Locale
+
+    init(localeContext: PicklyLocaleContext = .current) {
+        self.locale = Locale(identifier: localeContext.language.localeIdentifier)
+    }
 
     struct Result: Sendable {
         let score: Int?
@@ -31,7 +35,7 @@ nonisolated struct ScoringService: Sendable {
 
         let sugarAssessment = nutrition.sugarAssessment(ingredients: ingredients)
         let isBeverage = Self.isBeverageCategory(category)
-        var score = 75
+        var score = ScoringMethodology.baselineScore
         var reasons: [String] = []
         var warnings: [String] = []
         var positives: [String] = []
@@ -44,57 +48,57 @@ nonisolated struct ScoringService: Sendable {
                 switch sugars {
                 case ..<5:
                     score += 3
-                    positives.append("Low in \(sugarLabel) per 100g")
+                    positives.append(copy("Low in %@ per 100g", localizedSugarLabel(sugarLabel)))
                 case 5..<8:
-                    reasons.append("Moderate \(sugarLabel) level per 100g")
+                    reasons.append(copy("Moderate %@ level per 100g", localizedSugarLabel(sugarLabel)))
                 case 8..<12:
                     score -= 18
-                    warnings.append("Contains more \(sugarLabel) than ideal for everyday use")
-                    forYouNotes.append("You might prefer a lower sugar drink")
+                    warnings.append(copy("Contains more %@ than ideal for everyday use", localizedSugarLabel(sugarLabel)))
+                    forYouNotes.append(copy("You might prefer a lower sugar drink"))
                 default:
                     score -= 24
-                    warnings.append("High \(sugarLabel) level per 100g")
-                    forYouNotes.append("You might prefer a lower sugar drink")
+                    warnings.append(copy("High %@ level per 100g", localizedSugarLabel(sugarLabel)))
+                    forYouNotes.append(copy("You might prefer a lower sugar drink"))
                 }
             } else {
                 switch sugars {
                 case ..<5:
                     score += 3
-                    positives.append("Low in \(sugarLabel) per 100g")
+                    positives.append(copy("Low in %@ per 100g", localizedSugarLabel(sugarLabel)))
                 case 5..<12:
-                    reasons.append("Moderate \(sugarLabel) level per 100g")
+                    reasons.append(copy("Moderate %@ level per 100g", localizedSugarLabel(sugarLabel)))
                 case 12..<22:
                     score -= 10
-                    warnings.append("Contains more \(sugarLabel) than ideal for everyday use")
-                    forYouNotes.append("May not be the best choice if you're reducing sugar")
+                    warnings.append(copy("Contains more %@ than ideal for everyday use", localizedSugarLabel(sugarLabel)))
+                    forYouNotes.append(copy("May not be the best choice if you're reducing sugar"))
                 default:
                     score -= 18
-                    warnings.append("High \(sugarLabel) level per 100g")
-                    forYouNotes.append("You might prefer a lower sugar option")
+                    warnings.append(copy("High %@ level per 100g", localizedSugarLabel(sugarLabel)))
+                    forYouNotes.append(copy("You might prefer a lower sugar option"))
                 }
             }
 
             if let explanation = sugarAssessment.explanation {
-                reasons.append(explanation)
+                reasons.append(copy(explanation))
             }
         } else if let explanation = sugarAssessment.explanation {
-            warnings.append(explanation)
+            warnings.append(copy(explanation))
         }
 
         if let salt = nutrition.salt100g {
             switch salt {
             case ..<0.3:
                 score += 3
-                positives.append("Low salt per 100g")
+                positives.append(copy("Low salt per 100g"))
             case 0.3..<1.0:
-                reasons.append("Moderate sodium level per 100g")
+                reasons.append(copy("Moderate sodium level per 100g"))
             case 1.0..<1.5:
                 score -= 10
-                warnings.append("Salt is higher than ideal for everyday use")
+                warnings.append(copy("Salt is higher than ideal for everyday use"))
             default:
                 score -= 16
-                warnings.append("High sodium level per 100g")
-                forYouNotes.append("You might prefer a lower sodium option")
+                warnings.append(copy("High sodium level per 100g"))
+                forYouNotes.append(copy("You might prefer a lower sodium option"))
             }
         }
 
@@ -102,56 +106,56 @@ nonisolated struct ScoringService: Sendable {
             switch saturatedFat {
             case ..<1.5:
                 score += 2
-                positives.append("Low saturated fat per 100g")
+                positives.append(copy("Low saturated fat per 100g"))
             case 1.5..<5:
-                reasons.append("Moderate saturated fat level")
+                reasons.append(copy("Moderate saturated fat level"))
             case 5..<10:
                 score -= 10
-                warnings.append("Saturated fat is higher than ideal for everyday use")
+                warnings.append(copy("Saturated fat is higher than ideal for everyday use"))
             default:
                 score -= 16
-                warnings.append("High saturated fat level per 100g")
+                warnings.append(copy("High saturated fat level per 100g"))
             }
         }
 
         if let proteins = nutrition.proteins100g {
             if proteins >= 10 {
                 score += 5
-                positives.append("Good source of protein")
+                positives.append(copy("Good source of protein"))
             } else if proteins >= 5 {
                 score += 2
-                positives.append("Contains some protein")
+                positives.append(copy("Contains some protein"))
             }
         }
 
         if let fiber = nutrition.fiber100g {
             if fiber >= 6 {
                 score += 5
-                positives.append("Good source of fiber")
+                positives.append(copy("Good source of fiber"))
             } else if fiber >= 3 {
                 score += 2
-                positives.append("Contains some fiber")
+                positives.append(copy("Contains some fiber"))
             }
         }
 
         if ingredients.isEmpty {
-            warnings.append("Ingredient data is not available yet")
+            warnings.append(copy("Ingredient data is not available yet"))
         } else if ingredients.count > 20 {
             score -= 8
-            warnings.append("Ingredient list has more than 20 items")
+            warnings.append(copy("Ingredient list has more than 20 items"))
         } else if ingredients.count > 12 {
             score -= 5
-            warnings.append("Ingredient list has more than 12 items")
+            warnings.append(copy("Ingredient list has more than 12 items"))
         } else {
-            reasons.append("Ingredient list is reasonably short")
+            reasons.append(copy("Ingredient list is reasonably short"))
         }
 
         if additivesTags.count > 4 {
             score -= 5
-            warnings.append("Contains several listed additives")
+            warnings.append(copy("Contains several listed additives"))
         } else if !additivesTags.isEmpty {
             score -= 2
-            reasons.append("Contains a small number of listed additives")
+            reasons.append(copy("Contains a small number of listed additives"))
         }
 
         let confidence = confidenceLevel(
@@ -161,9 +165,9 @@ nonisolated struct ScoringService: Sendable {
         )
 
         if sugarAssessment.hasDataConflict {
-            warnings.append("Conflicting nutrition data lowers confidence in this result")
+            warnings.append(copy("Conflicting nutrition data lowers confidence in this result"))
         } else if confidence != "High" {
-            warnings.append("Nutrition data is incomplete, so confidence is lower")
+            warnings.append(copy("Nutrition data is incomplete, so confidence is lower"))
         }
 
         let finalScore = min(100, max(0, score))
@@ -172,8 +176,8 @@ nonisolated struct ScoringService: Sendable {
         return Result(
             score: finalScore,
             summary: summary,
-            reasons: unique(reasons.isEmpty ? ["Score is based on the available nutrition and ingredient data"] : reasons),
-            warnings: unique(warnings.isEmpty ? ["No major watch-outs in the available data"] : warnings),
+            reasons: unique(reasons.isEmpty ? [copy("Score is based on the available nutrition and ingredient data")] : reasons),
+            warnings: unique(warnings),
             positives: unique(positives),
             forYouNotes: unique(forYouNotes),
             confidence: confidence,
@@ -189,22 +193,22 @@ nonisolated struct ScoringService: Sendable {
         var warnings: [String] = []
 
         if !hasProductName {
-            warnings.append("Product name is not available yet.")
+            warnings.append(copy("Product name is not available yet."))
         }
 
         if ingredients.isEmpty {
-            warnings.append("Ingredients not available yet.")
+            warnings.append(copy("Ingredients not available yet."))
         }
 
         if nutrition.isIncomplete {
-            warnings.append("Nutrition facts are incomplete.")
+            warnings.append(copy("Nutrition facts are incomplete."))
         }
 
         return Result(
             score: nil,
-            summary: "Some product details are missing.",
-            reasons: ["Not enough nutrition data for a reliable score."],
-            warnings: unique(warnings.isEmpty ? ["Product details are incomplete."] : warnings),
+            summary: copy("Some product details are missing."),
+            reasons: [copy("Not enough nutrition data for a reliable score.")],
+            warnings: unique(warnings.isEmpty ? [copy("Product details are incomplete.")] : warnings),
             positives: [],
             forYouNotes: [],
             confidence: "Low",
@@ -255,18 +259,18 @@ nonisolated struct ScoringService: Sendable {
 
     private func summary(for score: Int, confidence: String) -> String {
         if confidence == "Low" {
-            return "Pickly found this product, but nutrition data is limited, so the score is less certain."
+            return copy("Pickly found this product, but nutrition data is limited, so the score is less certain.")
         }
 
         switch score {
         case 85...100:
-            return "A strong option based on the available nutrition and ingredient data."
+            return copy("A strong option based on the available nutrition and ingredient data.")
         case 70..<85:
-            return "A balanced option with a few details worth checking."
+            return copy("A balanced option with a few details worth checking.")
         case 50..<70:
-            return "An okay option, though some nutrition details may make it better as an occasional choice."
+            return copy("An okay option, though some nutrition details may make it better as an occasional choice.")
         default:
-            return "Better as an occasional option based on the available nutrition details."
+            return copy("Better as an occasional option based on the available nutrition details.")
         }
     }
 
@@ -278,16 +282,16 @@ nonisolated struct ScoringService: Sendable {
         let values = [
             format(
                 sugarAssessment.value,
-                label: sugarAssessment.label
+                label: localizedSugarLabel(sugarAssessment.label)
             ),
-            format(nutrition.salt100g, label: "salt"),
-            format(nutrition.saturatedFat100g, label: "sat fat"),
-            format(nutrition.proteins100g, label: "protein"),
-            format(nutrition.fiber100g, label: "fiber")
+            format(nutrition.salt100g, label: copy("salt")),
+            format(nutrition.saturatedFat100g, label: copy("sat fat")),
+            format(nutrition.proteins100g, label: copy("protein")),
+            format(nutrition.fiber100g, label: copy("fiber"))
         ].compactMap { $0 }
 
         guard !values.isEmpty else {
-            return "Nutrition data incomplete"
+            return copy("Nutrition data incomplete")
         }
 
         return values.joined(separator: ", ")
@@ -298,7 +302,17 @@ nonisolated struct ScoringService: Sendable {
             return nil
         }
 
-        return "\(value.formatted(.number.precision(.fractionLength(0...1))))g \(label)"
+        return "\(value.formatted(.number.locale(locale).precision(.fractionLength(0...1))))g \(label)"
+    }
+
+    private func localizedSugarLabel(_ label: String) -> String {
+        copy(label == "added sugar" ? "added sugar" : "sugar")
+    }
+
+    private func copy(_ key: String, _ arguments: CVarArg...) -> String {
+        let localized = String(localized: String.LocalizationValue(key), locale: locale)
+        guard !arguments.isEmpty else { return localized }
+        return String(format: localized, locale: locale, arguments: arguments)
     }
 
     private func unique(_ values: [String]) -> [String] {

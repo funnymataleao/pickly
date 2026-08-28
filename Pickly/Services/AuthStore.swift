@@ -19,18 +19,18 @@ final class AuthStore: ObservableObject {
         case signedOut
         case signedIn(AuthSession)
         case needsEmailConfirmation(String)
-        case recoveringPassword(AuthSession)
     }
 
     @Published private(set) var state: State = .signedOut
     @Published private(set) var isWorking = false
     @Published private(set) var isRestoringSession = true
+    @Published private(set) var requiresAppleReauthentication = false
     @Published var statusMessage: String?
 
     private let service: AuthService
     private let googleSignInProvider: GoogleSignInProviding
-    private static let pendingAppleAuthorizationAccountPrefix = "pending-apple-authorization."
     private var appleRawNonce: String?
+    private var appleDeletionRawNonce: String?
     private var hasAttemptedSessionRestore = false
 
     var isConfigured: Bool {
@@ -49,8 +49,6 @@ final class AuthStore: ObservableObject {
             return session.user.email
         case .needsEmailConfirmation(let email):
             return email
-        case .recoveringPassword(let session):
-            return session.user.email
         }
     }
 
@@ -58,7 +56,7 @@ final class AuthStore: ObservableObject {
         service: AuthService? = nil,
         googleSignInProvider: GoogleSignInProviding? = nil
     ) {
-        self.service = service ?? SupabaseAuthService()
+        self.service = service ?? FirebaseAuthService()
         self.googleSignInProvider = googleSignInProvider ?? GoogleSignInProvider()
     }
 
@@ -84,6 +82,21 @@ final class AuthStore: ObservableObject {
         }
     }
 
+    /// Starts a fresh Sign in with Apple request for the destructive account
+    /// deletion flow. The nonce is kept only in memory until the callback is
+    /// validated; authorization codes are never persisted for this purpose.
+    func configureAppleDeletionRequest(_ request: ASAuthorizationAppleIDRequest) {
+        do {
+            let rawNonce = try Self.randomNonce()
+            appleDeletionRawNonce = rawNonce
+            statusMessage = nil
+            request.nonce = Self.sha256(rawNonce)
+        } catch {
+            appleDeletionRawNonce = nil
+            statusMessage = Self.nonceErrorMessage(error)
+        }
+    }
+
     func completeAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
         guard !isWorking else { return }
 
@@ -100,14 +113,6 @@ final class AuthStore: ObservableObject {
                 throw AuthServiceError.invalidResponse
             }
 
-            guard
-                let authorizationCode = credential.authorizationCode
-                    .flatMap({ String(data: $0, encoding: .utf8) }),
-                !authorizationCode.isEmpty
-            else {
-                throw AuthServiceError.invalidResponse
-            }
-
             appleRawNonce = nil
             await runAuthTask {
                 let session = try await service.signIn(
@@ -118,14 +123,9 @@ final class AuthStore: ObservableObject {
                         fullName: credential.fullName
                     )
                 )
-                do {
-                    try await storeAppleAuthorizationCode(authorizationCode, session: session)
-                } catch {
-                    try? await service.signOut(session: session)
-                    throw error
-                }
                 state = .signedIn(session)
-                statusMessage = "Signed in with Apple."
+                requiresAppleReauthentication = false
+                statusMessage = PicklyCopy.localized("Signed in with Apple.")
             }
         } catch let error as ASAuthorizationError {
             appleRawNonce = nil
@@ -155,6 +155,72 @@ final class AuthStore: ObservableObject {
         }
     }
 
+    /// Completes the destructive Apple reauthentication flow. A failed
+    /// attempt intentionally keeps the session and the confirmation card
+    /// visible so the user can retry without signing out first.
+    func completeAppleAccountDeletion(_ result: Result<ASAuthorization, Error>) async -> Bool {
+        guard !isWorking else { return false }
+        guard
+            requiresAppleReauthentication,
+            let session = currentSession,
+            session.identityProvider == .apple
+        else {
+            statusMessage = PicklyCopy.localized("Confirm with Apple before deleting your account.")
+            return false
+        }
+
+        do {
+            let authorization = try result.get()
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                throw AuthServiceError.invalidResponse
+            }
+            guard
+                let identityToken = credential.identityToken,
+                let idToken = String(data: identityToken, encoding: .utf8),
+                let rawNonce = appleDeletionRawNonce,
+                let authorizationCode = credential.authorizationCode
+                    .flatMap({ String(data: $0, encoding: .utf8) }),
+                !authorizationCode.isEmpty
+            else {
+                throw AuthServiceError.invalidResponse
+            }
+
+            appleDeletionRawNonce = nil
+            isWorking = true
+            statusMessage = nil
+            defer { isWorking = false }
+
+            try await service.deleteAccount(
+                session: session,
+                appleAuthorizationCode: authorizationCode,
+                identityToken: idToken,
+                rawNonce: rawNonce
+            )
+            finishAccountDeletion(for: session)
+            return true
+        } catch let error as ASAuthorizationError {
+            appleDeletionRawNonce = nil
+            guard error.code != .canceled else {
+                statusMessage = nil
+                return false
+            }
+
+#if targetEnvironment(simulator)
+            guard error.code != .unknown else {
+                statusMessage = nil
+                return false
+            }
+#endif
+
+            statusMessage = Self.appleAuthorizationErrorMessage(error)
+            return false
+        } catch {
+            appleDeletionRawNonce = nil
+            statusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+    }
+
     func signInWithGoogle() async {
         let rawNonce: String
         do {
@@ -176,7 +242,8 @@ final class AuthStore: ObservableObject {
                 )
             )
             state = .signedIn(session)
-            statusMessage = "Signed in with Google."
+            requiresAppleReauthentication = false
+            statusMessage = PicklyCopy.localized("Signed in with Google.")
         }
     }
 
@@ -185,10 +252,11 @@ final class AuthStore: ObservableObject {
             switch try await service.signUp(email: email, password: password) {
             case .signedIn(let session):
                 state = .signedIn(session)
-                statusMessage = "Account created."
+                requiresAppleReauthentication = false
+                statusMessage = PicklyCopy.localized("Account created.")
             case .confirmationRequired(let email):
                 state = .needsEmailConfirmation(email)
-                statusMessage = "Check your email to confirm your account."
+                statusMessage = PicklyCopy.localized("Check your email to confirm your account.")
             }
         }
     }
@@ -197,62 +265,27 @@ final class AuthStore: ObservableObject {
         await runAuthTask {
             let session = try await service.signIn(email: email, password: password)
             state = .signedIn(session)
-            statusMessage = "Signed in."
+            requiresAppleReauthentication = false
+            statusMessage = PicklyCopy.localized("Signed in.")
         }
     }
 
     func requestPasswordReset(email: String) async {
         await runAuthTask {
             try await service.requestPasswordReset(email: email)
-            statusMessage = "Check your email for a password reset link."
+            statusMessage = PicklyCopy.localized("Check your email for a secure password reset link, then return to Pickly to sign in.")
         }
-    }
-
-    func handleIncomingURL(_ url: URL) async -> Bool {
-        guard
-            url.scheme?.lowercased() == "pickly",
-            url.host?.lowercased() == "auth",
-            url.path == "/reset-password"
-        else {
-            return false
-        }
-
-        await runAuthTask {
-            let session = try await service.completePasswordRecovery(from: url)
-            state = .recoveringPassword(session)
-        }
-        return true
-    }
-
-    func updatePassword(_ password: String) async -> Bool {
-        guard case .recoveringPassword = state else { return false }
-
-        await runAuthTask {
-            let session = try await service.updatePassword(password)
-            state = .signedIn(session)
-            statusMessage = "Password updated."
-        }
-        return !isRecoveringPassword
-    }
-
-    func cancelPasswordRecovery() async {
-        guard case .recoveringPassword(let session) = state else { return }
-        state = .signedOut
-        try? await service.signOut(session: session)
-    }
-
-    var isRecoveringPassword: Bool {
-        if case .recoveringPassword = state { return true }
-        return false
     }
 
     func signOut() async {
         let session = currentSession
         state = .signedOut
+        requiresAppleReauthentication = false
+        appleDeletionRawNonce = nil
         googleSignInProvider.signOut()
 
         guard let session else {
-            statusMessage = "Signed out."
+            statusMessage = PicklyCopy.localized("Signed out.")
             return
         }
 
@@ -261,9 +294,9 @@ final class AuthStore: ObservableObject {
 
         do {
             try await service.signOut(session: session)
-            statusMessage = "Signed out."
+            statusMessage = PicklyCopy.localized("Signed out.")
         } catch {
-            statusMessage = "Signed out on this device. Reconnect to end the server session."
+            statusMessage = PicklyCopy.localized("Signed out on this device. Reconnect to end the server session.")
         }
     }
 
@@ -272,32 +305,42 @@ final class AuthStore: ObservableObject {
             return false
         }
 
+        if session.identityProvider == .apple {
+            requiresAppleReauthentication = true
+            appleDeletionRawNonce = nil
+            statusMessage = PicklyCopy.localized("For your security, confirm with Apple before deleting your account.")
+            return false
+        }
+
         isWorking = true
         statusMessage = nil
         defer { isWorking = false }
 
         do {
-            await retryPendingAppleAuthorizationCode(for: session)
             try await service.deleteAccount(session: session)
-
-            // Server deletion is the durable success condition. Reflect it in
-            // the UI immediately instead of keeping the account sheet blocked
-            // while a provider performs its optional local cleanup.
-            state = .signedOut
-            statusMessage = "Your account was deleted."
-
-            if session.identityProvider == .google {
-                Task { @MainActor [googleSignInProvider] in
-                    try? await googleSignInProvider.disconnect()
-                    googleSignInProvider.signOut()
-                }
-            } else {
-                googleSignInProvider.signOut()
-            }
+            finishAccountDeletion(for: session)
             return true
         } catch {
             statusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return false
+        }
+    }
+
+    private func finishAccountDeletion(for session: AuthSession) {
+        // Server and provider deletion are complete. Reflect the durable
+        // success in the UI and clear any local provider state.
+        state = .signedOut
+        requiresAppleReauthentication = false
+        appleDeletionRawNonce = nil
+        statusMessage = PicklyCopy.localized("Your account was deleted.")
+
+        if session.identityProvider == .google {
+            Task { @MainActor [googleSignInProvider] in
+                try? await googleSignInProvider.disconnect()
+                googleSignInProvider.signOut()
+            }
+        } else {
+            googleSignInProvider.signOut()
         }
     }
 
@@ -307,79 +350,29 @@ final class AuthStore: ObservableObject {
         do {
             if let session = try await service.restoreSession() {
                 state = .signedIn(session)
-                await retryPendingAppleAuthorizationCode(for: session)
+                requiresAppleReauthentication = false
+                appleDeletionRawNonce = nil
             }
         } catch {
             state = .signedOut
         }
     }
 
-    private func storeAppleAuthorizationCode(
-        _ authorizationCode: String,
-        session: AuthSession
-    ) async throws {
-        let account = Self.pendingAppleAuthorizationAccount(for: session.user.id)
-        try? KeychainStore.save(authorizationCode, account: account)
-
-        do {
-            try await service.storeAppleAuthorizationCode(
-                authorizationCode,
-                session: session
-            )
-            KeychainStore.remove(account: account)
-        } catch {
-            KeychainStore.remove(account: account)
-            throw AuthServiceError.requestFailed(
-                "Apple sign-in couldn't finish securely. Please try again."
-            )
-        }
-    }
-
-    private func retryPendingAppleAuthorizationCode(for session: AuthSession) async {
-        guard session.identityProvider == .apple else { return }
-
-        let account = Self.pendingAppleAuthorizationAccount(for: session.user.id)
-        let authorizationCode: String?
-        do {
-            authorizationCode = try KeychainStore.load(String.self, account: account)
-        } catch {
-            return
-        }
-
-        guard let authorizationCode else { return }
-
-        do {
-            try await service.storeAppleAuthorizationCode(
-                authorizationCode,
-                session: session
-            )
-            KeychainStore.remove(account: account)
-        } catch {
-            // Apple authorization codes are short-lived and single-use. A
-            // failed retry must not loop forever with an expired credential.
-            KeychainStore.remove(account: account)
-        }
-    }
-
-    private static func pendingAppleAuthorizationAccount(for userID: String) -> String {
-        pendingAppleAuthorizationAccountPrefix + userID
-    }
-
     private static func appleAuthorizationErrorMessage(_ error: ASAuthorizationError) -> String {
         guard error.code == .unknown else {
-            return "Apple sign-in couldn't be completed. Please try again."
+            return PicklyCopy.localized("Apple sign-in couldn't be completed. Please try again.")
         }
 
 #if targetEnvironment(simulator)
-        return "Sign in with Apple isn't available in this Simulator. Use email or Google here, or test Apple sign-in on a real iPhone."
+        return PicklyCopy.localized("Sign in with Apple isn't available in this Simulator. Use email or Google here, or test Apple sign-in on a real iPhone.")
 #else
-        return "Apple sign-in couldn't start. Make sure this iPhone is signed in to iCloud, then try again."
+        return PicklyCopy.localized("Apple sign-in couldn't start. Make sure this iPhone is signed in to iCloud, then try again.")
 #endif
     }
 
     var currentSession: AuthSession? {
         switch state {
-        case .signedIn(let session), .recoveringPassword(let session):
+        case .signedIn(let session):
             return session
         case .signedOut, .needsEmailConfirmation:
             return nil

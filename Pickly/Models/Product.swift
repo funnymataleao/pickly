@@ -154,12 +154,19 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
             let sweetenerTerms = [
                 "sugar", "sucre", "sucrose", "saccharose", "syrup", "sirup",
                 "glucose", "fructose", "dextrose", "maltose", "honey", "molasses",
-                "agave", "corn sweetener", "sweetened condensed"
+                "agave", "corn sweetener", "sweetened condensed",
+                "zucker", "honig", "melasse", "glukose", "fruktose", "süß",
+                "zucchero", "sciroppo", "miele", "melassa", "dolcificat",
+                "azúcar", "jarabe", "miel", "melaza", "endulzad",
+                "açúcar", "xarope", "mel", "melaço", "adoçad",
+                "sukker", "honning", "sødet",
+                "cukier", "syrop", "miód", "słodzon",
+                "cukr", "med", "slazen"
             ]
 
             return ingredients.contains { ingredient in
                 let normalized = ingredient
-                    .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                    .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
                     .lowercased()
                 let tokens = Set(
                     normalized
@@ -167,8 +174,11 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
                         .filter { !$0.isEmpty }
                 )
 
-                return sweetenerTerms.contains { term in
-                    term.contains(" ") ? normalized.contains(term) : tokens.contains(term)
+                return sweetenerTerms.contains { rawTerm in
+                    let term = rawTerm
+                        .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+                        .lowercased()
+                    return term.contains(" ") ? normalized.contains(term) : tokens.contains(term)
                 }
             }
         }
@@ -179,9 +189,11 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
     let name: String
     let brand: String
     let category: String
+    let categoryTags: [String]
     let imageName: String
     let imageURL: URL?
     let ingredients: [String]
+    let declaredIngredientCount: Int?
     let nutrition: Nutrition
     let nutritionSummary: String
     let score: Int?
@@ -201,9 +213,11 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         case name
         case brand
         case category
+        case categoryTags
         case imageName
         case imageURL
         case ingredients
+        case declaredIngredientCount
         case nutrition
         case nutritionSummary
         case score
@@ -225,9 +239,11 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         self.name = try container.decode(String.self, forKey: .name)
         self.brand = try container.decode(String.self, forKey: .brand)
         self.category = try container.decode(String.self, forKey: .category)
+        self.categoryTags = try container.decodeIfPresent([String].self, forKey: .categoryTags) ?? []
         self.imageName = try container.decode(String.self, forKey: .imageName)
         self.imageURL = try container.decodeIfPresent(URL.self, forKey: .imageURL)
         self.ingredients = try container.decode([String].self, forKey: .ingredients)
+        self.declaredIngredientCount = try container.decodeIfPresent(Int.self, forKey: .declaredIngredientCount)
         self.nutrition = try container.decode(Nutrition.self, forKey: .nutrition)
         self.nutritionSummary = try container.decode(String.self, forKey: .nutritionSummary)
         self.score = try container.decodeIfPresent(Int.self, forKey: .score)
@@ -248,9 +264,11 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         name: String,
         brand: String,
         category: String,
+        categoryTags: [String] = [],
         imageName: String,
         imageURL: URL? = nil,
         ingredients: [String],
+        declaredIngredientCount: Int? = nil,
         nutrition: Nutrition,
         nutritionSummary: String,
         score: Int?,
@@ -269,9 +287,11 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         self.name = name
         self.brand = brand
         self.category = category
+        self.categoryTags = categoryTags
         self.imageName = imageName
         self.imageURL = imageURL
         self.ingredients = ingredients
+        self.declaredIngredientCount = declaredIngredientCount
         self.nutrition = nutrition
         self.nutritionSummary = nutritionSummary
         self.score = score
@@ -302,9 +322,141 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         nutrition.sugarAssessment(ingredients: ingredients).label
     }
 
+    func replacingID(with newID: String) -> Product {
+        Product(
+            id: newID,
+            barcode: barcode,
+            name: name,
+            brand: brand,
+            category: category,
+            categoryTags: categoryTags,
+            imageName: imageName,
+            imageURL: imageURL,
+            ingredients: ingredients,
+            declaredIngredientCount: declaredIngredientCount,
+            nutrition: nutrition,
+            nutritionSummary: nutritionSummary,
+            score: score,
+            summary: summary,
+            reasons: reasons,
+            warnings: warnings,
+            positives: positives,
+            forYouNotes: forYouNotes,
+            alternativeIDs: alternativeIDs,
+            confidence: confidence,
+            dietary: dietary,
+            source: source
+        )
+    }
+
+    func replacingName(with newName: String) -> Product {
+        Product(
+            id: id,
+            barcode: barcode,
+            name: newName,
+            brand: brand,
+            category: category,
+            categoryTags: categoryTags,
+            imageName: imageName,
+            imageURL: imageURL,
+            ingredients: ingredients,
+            declaredIngredientCount: declaredIngredientCount,
+            nutrition: nutrition,
+            nutritionSummary: nutritionSummary,
+            score: score,
+            summary: summary,
+            reasons: reasons,
+            warnings: warnings,
+            positives: positives,
+            forYouNotes: forYouNotes,
+            alternativeIDs: alternativeIDs,
+            confidence: confidence,
+            dietary: dietary,
+            source: source
+        )
+    }
+
+    /// Combines the shared catalog record with a fresh OFF record without
+    /// allowing either source to erase the other's stronger facts.
+    func mergingCatalogData(from incoming: Product) -> Product {
+        let existingIsCurated = isCuratedCatalogRecord
+        let incomingIsCurated = incoming.isCuratedCatalogRecord
+        let scoringProduct = incomingIsCurated || !existingIsCurated ? incoming : self
+        let descriptiveProduct = existingIsCurated && !incomingIsCurated ? self : incoming
+        let mergedNutrition = Nutrition(
+            sugars100g: incoming.nutrition.sugars100g ?? nutrition.sugars100g,
+            addedSugars100g: incoming.nutrition.addedSugars100g ?? nutrition.addedSugars100g,
+            salt100g: incoming.nutrition.salt100g ?? nutrition.salt100g,
+            saturatedFat100g: incoming.nutrition.saturatedFat100g ?? nutrition.saturatedFat100g,
+            proteins100g: incoming.nutrition.proteins100g ?? nutrition.proteins100g,
+            fiber100g: incoming.nutrition.fiber100g ?? nutrition.fiber100g
+        )
+        let mergedDietary = DietaryAttributes(
+            vegetarian: Self.mergedDietaryStatus(dietary.vegetarian, incoming.dietary.vegetarian),
+            vegan: Self.mergedDietaryStatus(dietary.vegan, incoming.dietary.vegan),
+            glutenFree: Self.mergedDietaryStatus(dietary.glutenFree, incoming.dietary.glutenFree),
+            lactoseFree: Self.mergedDietaryStatus(dietary.lactoseFree, incoming.dietary.lactoseFree)
+        )
+        var seenAlternativeIDs = Set<String>()
+        let mergedAlternativeIDs = (alternativeIDs + incoming.alternativeIDs)
+            .filter { seenAlternativeIDs.insert($0).inserted }
+        var seenCategoryTags = Set<String>()
+        let mergedCategoryTags = (categoryTags + incoming.categoryTags)
+            .filter { seenCategoryTags.insert($0.lowercased()).inserted }
+
+        return Product(
+            id: id,
+            barcode: barcode,
+            name: descriptiveProduct.name == "Unknown product" ? name : descriptiveProduct.name,
+            brand: descriptiveProduct.brand == "Unknown brand" ? brand : descriptiveProduct.brand,
+            category: descriptiveProduct.category == "Grocery" ? category : descriptiveProduct.category,
+            categoryTags: mergedCategoryTags,
+            imageName: descriptiveProduct.imageName,
+            imageURL: incoming.imageURL ?? imageURL,
+            ingredients: incoming.ingredients.isEmpty ? ingredients : incoming.ingredients,
+            declaredIngredientCount: incoming.declaredIngredientCount ?? declaredIngredientCount,
+            nutrition: mergedNutrition,
+            nutritionSummary: scoringProduct.nutritionSummary,
+            score: scoringProduct.score,
+            summary: scoringProduct.summary,
+            reasons: scoringProduct.reasons,
+            warnings: scoringProduct.warnings,
+            positives: scoringProduct.positives,
+            forYouNotes: scoringProduct.forYouNotes,
+            alternativeIDs: mergedAlternativeIDs,
+            confidence: scoringProduct.confidence,
+            dietary: mergedDietary,
+            source: scoringProduct.source
+        )
+    }
+
+    private var isCuratedCatalogRecord: Bool {
+        source != .mock && !id.hasPrefix("off-")
+    }
+
+    private static func mergedDietaryStatus(
+        _ current: DietaryStatus,
+        _ incoming: DietaryStatus
+    ) -> DietaryStatus {
+        if current == .notSuitable || incoming == .notSuitable {
+            return .notSuitable
+        }
+        if current == .confirmed || incoming == .confirmed {
+            return .confirmed
+        }
+        return .unknown
+    }
+
     var ingredientCountLabel: String {
-        let noun = ingredients.count == 1 ? "item" : "items"
-        return "\(ingredients.count) \(noun)"
+        let count = ingredientCountForMatching
+        let noun = count == 1
+            ? PicklyCopy.localized("item")
+            : PicklyCopy.localized("items")
+        return "\(count) \(noun)"
+    }
+
+    var ingredientCountForMatching: Int {
+        declaredIngredientCount ?? ingredients.count
     }
 
     var verdict: String {
@@ -322,5 +474,86 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         default:
             return "Not great"
         }
+    }
+
+    /// Localized display value for the stable English verdict enum.
+    /// Keep `verdict` English because matching, persistence, and analytics use
+    /// it as a semantic value rather than presentation text.
+    var localizedVerdict: String {
+        PicklyCopy.localized(verdict)
+    }
+
+    var displayBrandName: String {
+        brand == "Unknown brand" ? PicklyCopy.localized("Unknown brand") : brand
+    }
+
+    /// Rebuilds human-readable analysis in the selected app language while
+    /// preserving the catalog's numeric score and verified product facts.
+    func localizedPresentation(
+        localeContext: PicklyLocaleContext = .current
+    ) -> Product {
+        let locale = Locale(identifier: localeContext.language.localeIdentifier)
+        let localizedNutritionSummary: String
+        if localeContext.language == .en {
+            localizedNutritionSummary = nutritionSummary
+        } else {
+            // Nutrition summaries are assembled from verified numeric facts,
+            // so regenerate only their labels for the selected locale. The
+            // persisted score and the source facts are never recalculated.
+            localizedNutritionSummary = ScoringService(localeContext: localeContext)
+                .evaluate(
+                    nutrition: nutrition,
+                    ingredients: ingredients,
+                    additivesTags: [],
+                    hasProductName: name != "Unknown product",
+                    category: category
+                )
+                .nutritionSummary
+        }
+
+        return replacingAnalysis(
+            nutritionSummary: localizedNutritionSummary,
+            summary: PicklyCopy.localized(summary, locale: locale),
+            reasons: reasons.map { PicklyCopy.localized($0, locale: locale) },
+            warnings: warnings.map { PicklyCopy.localized($0, locale: locale) },
+            positives: positives.map { PicklyCopy.localized($0, locale: locale) },
+            forYouNotes: forYouNotes.map { PicklyCopy.localized($0, locale: locale) },
+            confidence: confidence
+        )
+    }
+
+    func replacingAnalysis(
+        nutritionSummary: String,
+        summary: String,
+        reasons: [String],
+        warnings: [String],
+        positives: [String],
+        forYouNotes: [String],
+        confidence: String
+    ) -> Product {
+        Product(
+            id: id,
+            barcode: barcode,
+            name: name,
+            brand: brand,
+            category: category,
+            categoryTags: categoryTags,
+            imageName: imageName,
+            imageURL: imageURL,
+            ingredients: ingredients,
+            declaredIngredientCount: declaredIngredientCount,
+            nutrition: nutrition,
+            nutritionSummary: nutritionSummary,
+            score: score,
+            summary: summary,
+            reasons: reasons,
+            warnings: warnings,
+            positives: positives,
+            forYouNotes: forYouNotes,
+            alternativeIDs: alternativeIDs,
+            confidence: confidence,
+            dietary: dietary,
+            source: source
+        )
     }
 }

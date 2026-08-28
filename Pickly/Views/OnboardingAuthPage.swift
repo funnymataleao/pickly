@@ -163,9 +163,6 @@ struct OnboardingAuthPage: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .needsEmailConfirmation(let email):
             confirmationContent(email: email)
-        case .recoveringPassword:
-            ProgressView("Preparing password reset…")
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -286,7 +283,7 @@ struct OnboardingAuthPage: View {
             .frame(width: 44, height: 44)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Authentication is handled securely by Supabase.")
+                Text("Authentication is handled securely by Firebase.")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.primary)
 
@@ -393,4 +390,5 @@ private enum GoogleBrandAsset {
         authStore: AuthStore(),
         onComplete: {}
     )
+    .environmentObject(SubscriptionStore(loadProducts: false))
 }

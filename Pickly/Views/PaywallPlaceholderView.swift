@@ -15,18 +15,18 @@ enum PicklyPaywallEntryPoint {
     var headline: String {
         switch self {
         case .general:
-            return "Choose with less guesswork."
+            return PicklyCopy.localized("Choose with less guesswork.")
         case .alternatives:
-            return "Explore similar choices."
+            return PicklyCopy.localized("Explore Better Choices.")
         }
     }
 
     var subtitle: String {
         switch self {
         case .general:
-            return "Unlock better options and compare what matters on every scan."
+            return PicklyCopy.localized("Get live catalog matches and compare what matters on every scan.")
         case .alternatives:
-            return "See related products for this item and compare their details side by side."
+            return PicklyCopy.localized("Check the live catalog for higher-scoring products and compare them side by side.")
         }
     }
 }
@@ -38,6 +38,7 @@ struct PicklyPaywallView: View {
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var selectedPlan: SubscriptionStore.Plan = .annual
 
@@ -110,20 +111,20 @@ struct PicklyPaywallView: View {
                 .offset(x: 66, y: -74)
 
             VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 10) {
-                    Label("PICKLY PLUS", systemImage: "sparkles")
-                        .font(.caption.weight(.bold))
-                        .textCase(.uppercase)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 10) {
+                        heroBrandLabel
+                        heroClarityBadge
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        heroBrandLabel
 
-                    Spacer(minLength: 8)
+                        Spacer(minLength: 8)
 
-                    Text("More clarity")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.white.opacity(colorScheme == .dark ? 0.14 : 0.46), in: Capsule())
+                        heroClarityBadge
+                    }
                 }
-                .foregroundStyle(heroForeground)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(entryPoint.headline)
@@ -137,9 +138,16 @@ struct PicklyPaywallView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                HStack(spacing: 8) {
-                    HeroValueChip(title: heroMatchTitle, foreground: heroForeground)
-                    HeroValueChip(title: "Compare up to 3", foreground: heroForeground)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HeroValueChip(title: heroMatchTitle, foreground: heroForeground)
+                        HeroValueChip(title: "Compare products", foreground: heroForeground)
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        HeroValueChip(title: heroMatchTitle, foreground: heroForeground)
+                        HeroValueChip(title: "Compare products", foreground: heroForeground)
+                    }
                 }
             }
             .padding(20)
@@ -154,6 +162,24 @@ struct PicklyPaywallView: View {
         .accessibilityElement(children: .combine)
     }
 
+    private var heroBrandLabel: some View {
+        Label("PICKLY PLUS", picklyIcon: "sparkles", iconSize: 13)
+            .font(.caption.weight(.bold))
+            .textCase(.uppercase)
+            .foregroundStyle(heroForeground)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var heroClarityBadge: some View {
+        Text("More clarity")
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.white.opacity(colorScheme == .dark ? 0.14 : 0.46), in: Capsule())
+            .foregroundStyle(heroForeground)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     private var heroForeground: Color {
         colorScheme == .dark ? .white : .black
     }
@@ -161,9 +187,9 @@ struct PicklyPaywallView: View {
     private var heroMatchTitle: String {
         switch entryPoint {
         case .general:
-            "Available better picks"
+            PicklyCopy.localized("Live catalog matches")
         case .alternatives:
-            "Related product matches"
+            PicklyCopy.localized("Live higher-scoring matches")
         }
     }
 
@@ -233,8 +259,10 @@ struct PicklyPaywallView: View {
                                 .background(PicklyColor.profilePalette(.pro).fill, in: Capsule())
                         }
 
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 28, weight: .medium))
+                        PicklyIconImage(
+                            systemName: isSelected ? "checkmark.circle" : "circle",
+                            size: 28
+                        )
                             .foregroundStyle(
                                 isSelected ? PicklyColor.primary : PicklyColor.stroke
                             )
@@ -274,7 +302,9 @@ struct PicklyPaywallView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(displayName(for: plan)), \(displayPrice(for: plan))")
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityValue(
+            isSelected ? PicklyCopy.localized("Selected") : PicklyCopy.localized("Not selected")
+        )
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
@@ -290,13 +320,13 @@ struct PicklyPaywallView: View {
                 HStack(spacing: 8) {
                     if subscriptionStore.isPurchasing {
                         ProgressView()
-                            .tint(.black)
+                            .tint(PicklyColor.onPrimary(for: colorScheme))
                     }
 
                     Text(
                         subscriptionStore.isPurchasing
-                            ? "Working…"
-                            : "Start with \(selectedPlan.title)"
+                            ? PicklyCopy.localized("Working…")
+                            : PicklyCopy.format("Start with %@", selectedPlan.title)
                     )
                 }
                 .font(.headline.weight(.semibold))
@@ -322,15 +352,15 @@ struct PicklyPaywallView: View {
     }
 
     private func displayName(for plan: SubscriptionStore.Plan) -> String {
-        product(for: plan)?.displayName ?? "Pickly Plus \(plan.title)"
+        product(for: plan)?.displayName ?? PicklyCopy.format("Pickly Plus %@", plan.title)
     }
 
     private func displayPrice(for plan: SubscriptionStore.Plan) -> String {
         if let product = product(for: plan) {
-            return "\(product.displayPrice)/\(plan == .monthly ? "month" : "year")"
+            return "\(product.displayPrice)/\(PicklyCopy.localized(plan == .monthly ? "month" : "year"))"
         }
 
-        return "Unavailable"
+        return PicklyCopy.localized("Unavailable")
     }
 
     private var availablePlans: [SubscriptionStore.Plan] {
@@ -342,19 +372,21 @@ struct PicklyPaywallView: View {
             let monthlyProduct = product(for: .monthly),
             let annualProduct = product(for: .annual)
         else {
-            return "BEST VALUE"
+            return PicklyCopy.localized("BEST VALUE")
         }
 
         let fullYearAtMonthlyRate = monthlyProduct.price * Decimal(12)
         guard fullYearAtMonthlyRate > annualProduct.price else {
-            return "BEST VALUE"
+            return PicklyCopy.localized("BEST VALUE")
         }
 
         let savings = (fullYearAtMonthlyRate - annualProduct.price)
             / fullYearAtMonthlyRate
             * Decimal(100)
         let roundedSavings = NSDecimalNumber(decimal: savings).intValue
-        return roundedSavings > 0 ? "SAVE \(roundedSavings)%" : "BEST VALUE"
+        return roundedSavings > 0
+            ? PicklyCopy.format("SAVE %@%%", String(roundedSavings))
+            : PicklyCopy.localized("BEST VALUE")
     }
 
     private func selectAnAvailablePlanIfNeeded() {
@@ -367,9 +399,9 @@ struct PicklyPaywallView: View {
     private func planSupportLine(for plan: SubscriptionStore.Plan) -> String {
         switch plan {
         case .monthly:
-            return "A flexible way to compare related and goal-based options as you shop."
+            return PicklyCopy.localized("Ongoing access to live goal-based and higher-scoring product matching.")
         case .annual:
-            return "The full Pickly Plus toolkit, ready for every shopping trip."
+            return PicklyCopy.localized("A year of live catalog matching and side-by-side comparison.")
         }
     }
 
@@ -381,9 +413,8 @@ struct PicklyPaywallView: View {
             VStack(spacing: 0) {
                 PaywallFeatureRow(
                     systemImage: "arrow.left.arrow.right",
-                    title: alternativesFeatureTitle,
+                    title: "Live catalog matching",
                     subtitle: alternativesFeatureSubtitle,
-                    accent: PicklyColor.ratingGreatAccent,
                     fill: PicklyColor.ratingGoodFill
                 )
 
@@ -392,9 +423,8 @@ struct PicklyPaywallView: View {
 
                 PaywallFeatureRow(
                     systemImage: "rectangle.split.3x1",
-                    title: "Compare up to 3 side by side",
+                    title: "Compare side by side",
                     subtitle: "See score, sugar, salt, fat, protein, and fiber in one calm view.",
-                    accent: PicklyColor.ratingOkayAccent,
                     fill: PicklyColor.ratingOkayFill
                 )
             }
@@ -404,21 +434,12 @@ struct PicklyPaywallView: View {
         .picklyGlassCardSurface(cornerRadius: 24)
     }
 
-    private var alternativesFeatureTitle: String {
-        switch entryPoint {
-        case .general:
-            "Reveal available better matches"
-        case .alternatives:
-            "Reveal available similar matches"
-        }
-    }
-
     private var alternativesFeatureSubtitle: String {
         switch entryPoint {
         case .general:
-            "Swipe the goal-based ranked list without leaving the product result."
+            PicklyCopy.localized("Get current goal-based and related matches as Pickly's catalog evolves.")
         case .alternatives:
-            "Swipe related products selected for the current item."
+            PicklyCopy.localized("Get current higher-scoring matches for this item as catalog data evolves.")
         }
     }
 
@@ -428,7 +449,7 @@ struct PicklyPaywallView: View {
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(PicklyColor.primary)
 
-            Text("Available alternatives are unlocked. Compare up to three side by side whenever the product data supports it.")
+            Text("Your subscription keeps live catalog matches unlocked. Compare products side by side whenever current product data supports it.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -504,10 +525,19 @@ struct PicklyPaywallView: View {
 
     private var termsAndPrivacy: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Text("Payment is charged to your Apple ID at confirmation of purchase.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             Text("Subscriptions renew automatically unless canceled at least 24 hours before the end of the current period. You can manage or cancel in Apple ID settings.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            NavigationLink("How scoring works") {
+                ScoringMethodologyView()
+            }
 
             HStack(spacing: 12) {
                 NavigationLink("Privacy Policy") {
@@ -521,6 +551,7 @@ struct PicklyPaywallView: View {
             }
             .font(.footnote.weight(.semibold))
         }
+        .font(.footnote.weight(.semibold))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -546,13 +577,12 @@ private struct PaywallFeatureRow: View {
     let systemImage: String
     let title: String
     let subtitle: String
-    let accent: Color
     let fill: Color
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             PicklyIconImage(systemName: systemImage, size: 18)
-                .foregroundStyle(accent)
+                .foregroundStyle(PicklyColor.onBrandAccent)
                 .frame(width: 32, height: 32)
                 .background(fill, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                 .accessibilityHidden(true)

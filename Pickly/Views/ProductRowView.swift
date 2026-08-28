@@ -89,10 +89,6 @@ struct ProductRowView: View {
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(product.category)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -131,7 +127,14 @@ struct ProductRowsCard: View {
                 }
             }
         }
-        .picklyGlassCardSurface(cornerRadius: 22)
+        // Keep the discovery shelf at the same elevation as the summary
+        // cards above and below it. A glass surface adds its own compositing
+        // depth, which makes the shadow read differently from the feed cards.
+        .picklyCardSurface(
+            cornerRadius: 22,
+            fill: PicklyColor.card,
+            stroke: PicklyColor.stroke.opacity(0.42)
+        )
     }
 }
 
@@ -155,15 +158,14 @@ struct ProductThumbnailView: View {
     }
 
     private func remoteImage(url: URL) -> some View {
-        let optimizedURL = optimizedImageURL(url)
-
         #if canImport(UIKit)
         return CachedProductImage(
-            url: optimizedURL,
+            url: url,
             size: size,
             contentMode: contentMode,
             fallback: { fallbackImage }
         )
+        .id(url)
         #else
         return AsyncImage(url: url) { phase in
             switch phase {
@@ -180,18 +182,6 @@ struct ProductThumbnailView: View {
             }
         }
         #endif
-    }
-
-    private func optimizedImageURL(_ url: URL) -> URL {
-        guard url.host?.caseInsensitiveCompare("images.openfoodfacts.org") == .orderedSame else {
-            return url
-        }
-
-        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        var path = components?.path ?? url.path
-        path = path.replacingOccurrences(of: ".400.", with: ".200.")
-        components?.path = path
-        return components?.url ?? url
     }
 
     private var fallbackImage: some View {
@@ -228,7 +218,9 @@ private struct CachedProductImage<Fallback: View>: View {
         self.size = size
         self.contentMode = contentMode
         self.fallback = fallback()
-        _loader = StateObject(wrappedValue: ProductImageLoader(url: url))
+        _loader = StateObject(
+            wrappedValue: ProductImageLoader(url: url)
+        )
     }
 
     var body: some View {
@@ -239,19 +231,20 @@ private struct CachedProductImage<Fallback: View>: View {
                     .aspectRatio(contentMode: contentMode)
                     .frame(width: size, height: size)
                     .clipped()
-                    .transition(.opacity)
             } else {
                 fallback
                     .overlay {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.secondary)
-                            .opacity(0.72)
+                        if loader.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.secondary)
+                                .opacity(0.72)
+                        }
                     }
             }
         }
-        .task(id: url) {
-            await loader.load()
+        .onAppear {
+            loader.loadIfNeeded()
         }
     }
 }
@@ -259,8 +252,17 @@ private struct CachedProductImage<Fallback: View>: View {
 @MainActor
 private final class ProductImageLoader: ObservableObject {
     @Published private(set) var image: UIImage?
+    @Published private(set) var isLoading = false
 
     private static let imageCache = NSCache<NSURL, UIImage>()
+    // NSCache is allowed to evict aggressively when a navigation transition
+    // temporarily increases memory pressure. Keep the most recent carousel
+    // artwork strongly referenced so returning to the previous result never
+    // swaps every card back to its placeholder.
+    private static var retainedImages: [URL: UIImage] = [:]
+    private static var retainedImageOrder: [URL] = []
+    private static let retainedImageLimit = 24
+    private static var failedUntil: [URL: Date] = [:]
     private static let diskCacheDirectory: URL? = {
         guard let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
             return nil
@@ -286,45 +288,100 @@ private final class ProductImageLoader: ObservableObject {
 
     private let url: URL
     private var hasLoaded = false
+    private var loadTask: Task<Void, Never>?
 
     init(url: URL) {
         self.url = url
-        image = Self.imageCache.object(forKey: url as NSURL)
+        image = Self.cachedImage(for: url)
+        hasLoaded = image != nil || Self.hasRecentFailure(for: url)
     }
 
-    func load() async {
-        guard !hasLoaded, image == nil else { return }
+    func loadIfNeeded() {
+        guard !hasLoaded, image == nil, loadTask == nil else { return }
         hasLoaded = true
+        isLoading = true
+
+        // Deliberately use an unstructured task owned by the loader. SwiftUI
+        // cancels View.task when a NavigationLink is pushed, which previously
+        // aborted all visible carousel downloads and made them flash on return.
+        loadTask = Task { [self] in
+            await load()
+            isLoading = false
+            loadTask = nil
+        }
+    }
+
+    private func load() async {
+        if let cachedImage = Self.cachedImage(for: url) {
+            image = cachedImage
+            return
+        }
 
         if
             let cachedData = await Self.cachedData(for: url),
             let cachedImage = UIImage(data: cachedData)
         {
-            Self.imageCache.setObject(cachedImage, forKey: url as NSURL)
+            Self.cache(cachedImage, for: url)
             image = cachedImage
             return
         }
 
+        if let result = await Self.downloadImage(from: url) {
+            Self.cache(result.image, for: url)
+            Self.persist(result.data, for: url)
+            Self.failedUntil[url] = nil
+            image = result.image
+            return
+        }
+
+        // Do not leave an infinite spinner over products whose source image is
+        // missing. A short negative cache also prevents the same broken URL
+        // from flashing again immediately after navigating back.
+        Self.failedUntil[url] = Date().addingTimeInterval(120)
+    }
+
+    private static func downloadImage(from url: URL) async -> (image: UIImage, data: Data)? {
         do {
             var request = URLRequest(url: url)
             request.cachePolicy = .returnCacheDataElseLoad
-            let (data, response) = try await Self.session.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard
                 let httpResponse = response as? HTTPURLResponse,
                 (200..<300).contains(httpResponse.statusCode),
-                let preparedData = await Self.preparedImageData(data),
+                let preparedData = await preparedImageData(data),
                 let decodedImage = UIImage(data: preparedData)
             else {
-                return
+                return nil
             }
-
-            Self.imageCache.setObject(decodedImage, forKey: url as NSURL)
-            Self.persist(preparedData, for: url)
-            image = decodedImage
+            return (decodedImage, preparedData)
         } catch {
-            // Keep the deterministic product fallback when the network is
-            // slow or unavailable.
+            return nil
         }
+    }
+
+    private static func cachedImage(for url: URL) -> UIImage? {
+        retainedImages[url] ?? imageCache.object(forKey: url as NSURL)
+    }
+
+    private static func cache(_ image: UIImage, for url: URL) {
+        imageCache.setObject(image, forKey: url as NSURL)
+        retainedImages[url] = image
+        retainedImageOrder.removeAll { $0 == url }
+        retainedImageOrder.append(url)
+
+        while retainedImageOrder.count > retainedImageLimit {
+            let expiredURL = retainedImageOrder.removeFirst()
+            retainedImages[expiredURL] = nil
+        }
+    }
+
+    private static func hasRecentFailure(for url: URL) -> Bool {
+        guard let expiry = failedUntil[url] else { return false }
+        if expiry > Date() {
+            return true
+        }
+        failedUntil[url] = nil
+        return false
     }
 
     private static func preparedImageData(_ data: Data) async -> Data? {
@@ -333,7 +390,7 @@ private final class ProductImageLoader: ObservableObject {
         }.value
     }
 
-    nonisolated private static func downsample(data: Data, maxPixelSize: Int = 320) -> UIImage? {
+    nonisolated private static func downsample(data: Data, maxPixelSize: Int = 640) -> UIImage? {
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
             return nil
@@ -382,20 +439,34 @@ private final class ProductImageLoader: ObservableObject {
 
 struct ScorePill: View {
     let product: Product
-    private let size: CGFloat = 54
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
-                HStack(spacing: 8) {
-                    Text(product.verdict)
-                        .font(.caption.bold())
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        Text(product.localizedVerdict)
+                            .font(.caption.bold())
+                            .lineLimit(1)
 
-                    if !product.isLimitedData, let score = product.score {
-                        Text("\(score) / 100")
-                            .font(.caption.monospacedDigit().weight(.semibold))
+                        if !product.isLimitedData, let score = product.score {
+                            Text("\(score) / 100")
+                                .font(.caption.monospacedDigit().weight(.semibold))
+                                .lineLimit(1)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(product.localizedVerdict)
+                            .font(.caption.bold())
+
+                        if !product.isLimitedData, let score = product.score {
+                            Text("\(score) / 100")
+                                .font(.caption.monospacedDigit().weight(.semibold))
+                                .lineLimit(1)
+                        }
                     }
                 }
                 .padding(.horizontal, 12)
@@ -409,25 +480,27 @@ struct ScorePill: View {
                         .stroke(product.verdictColor.opacity(0.22), lineWidth: 1)
                 }
             } else {
-                VStack(spacing: 1) {
-                    Text(product.verdict)
-                        .font(.caption2.bold())
+                VStack(spacing: 2) {
+                    Text(product.localizedVerdict)
+                        .font(.caption2.weight(.semibold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.62)
+                        .minimumScaleFactor(0.72)
 
                     if !product.isLimitedData, let score = product.score {
                         Text("\(score)")
-                            .font(.caption2.monospacedDigit())
+                            .font(.subheadline.monospacedDigit().weight(.bold))
                             .lineLimit(1)
                     }
                 }
-                .frame(width: size, height: size)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(width: 68, height: 50)
                 .background(
-                    Circle()
-                        .fill(product.verdictFillColor)
+                    product.verdictFillColor,
+                    in: RoundedRectangle(cornerRadius: 15, style: .continuous)
                 )
                 .overlay {
-                    Circle()
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
                         .stroke(product.verdictColor.opacity(0.22), lineWidth: 1)
                 }
             }
@@ -438,10 +511,10 @@ struct ScorePill: View {
 
     private var accessibilityLabel: String {
         if !product.isLimitedData, let score = product.score {
-            return "\(product.verdict), score \(score)"
+            return "\(product.localizedVerdict), \(PicklyCopy.localized("score")) \(score)"
         }
 
-        return "Limited data, no reliable score"
+        return PicklyCopy.localized("Limited data, no reliable score")
     }
 }
 

@@ -7,9 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C0D1A0100000000000000010 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = C0D1A0150000000000000015 /* Auth */; };
 		C0D1A0110000000000000011 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = C0D1A0160000000000000016 /* GoogleSignIn */; };
 		C0D1A0120000000000000012 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C0D1A0170000000000000017 /* GoogleSignInSwift */; };
+		FBA1A0010000000000000001 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = FBA1A0030000000000000003 /* FirebaseAuth */; };
+		FBA1A0020000000000000002 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = FBA1A0040000000000000004 /* FirebaseCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,9 +49,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C0D1A0100000000000000010 /* Auth in Frameworks */,
 				C0D1A0110000000000000011 /* GoogleSignIn in Frameworks */,
 				C0D1A0120000000000000012 /* GoogleSignInSwift in Frameworks */,
+				FBA1A0010000000000000001 /* FirebaseAuth in Frameworks */,
+				FBA1A0020000000000000002 /* FirebaseCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -114,9 +116,10 @@
 			);
 			name = Pickly;
 			packageProductDependencies = (
-				C0D1A0150000000000000015 /* Auth */,
 				C0D1A0160000000000000016 /* GoogleSignIn */,
 				C0D1A0170000000000000017 /* GoogleSignInSwift */,
+				FBA1A0030000000000000003 /* FirebaseAuth */,
+				FBA1A0040000000000000004 /* FirebaseCore */,
 			);
 			productName = Pickly;
 			productReference = 88D1DCC42F9F5FEF0070F400 /* Pickly.app */;
@@ -173,13 +176,21 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				fr,
+				de,
+				es,
+				it,
+				"pt-PT",
+				da,
+				pl,
+				cs,
 				Base,
 			);
 			mainGroup = 88D1DCBB2F9F5FEF0070F400;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				C0D1A0130000000000000013 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				C0D1A0140000000000000014 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				FBA1A0050000000000000005 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 88D1DCC52F9F5FEF0070F400 /* Products */;
@@ -385,9 +396,6 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PicklyAppInfo.plist;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Pickly uses the camera to scan product barcodes.";
-				INFOPLIST_KEY_SUPABASE_PUBLISHABLE_KEY = "$(SUPABASE_PUBLISHABLE_KEY)";
-				INFOPLIST_KEY_SUPABASE_URL = "$(SUPABASE_URL)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -422,9 +430,6 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PicklyAppInfo.plist;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Pickly uses the camera to scan product barcodes.";
-				INFOPLIST_KEY_SUPABASE_PUBLISHABLE_KEY = "$(SUPABASE_PUBLISHABLE_KEY)";
-				INFOPLIST_KEY_SUPABASE_URL = "$(SUPABASE_URL)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -515,14 +520,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		C0D1A0130000000000000013 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/supabase/supabase-swift.git";
-			requirement = {
-				kind = exactVersion;
-				version = 2.54.1;
-			};
-		};
 		C0D1A0140000000000000014 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
@@ -531,14 +528,17 @@
 				version = 9.2.0;
 			};
 		};
+		FBA1A0050000000000000005 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = exactVersion;
+				version = 12.18.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		C0D1A0150000000000000015 /* Auth */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C0D1A0130000000000000013 /* XCRemoteSwiftPackageReference "supabase-swift" */;
-			productName = Auth;
-		};
 		C0D1A0160000000000000016 /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = C0D1A0140000000000000014 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
@@ -548,6 +548,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C0D1A0140000000000000014 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		FBA1A0030000000000000003 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FBA1A0050000000000000005 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		FBA1A0040000000000000004 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FBA1A0050000000000000005 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

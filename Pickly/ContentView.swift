@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct ContentView: View {
     @StateObject private var productCatalog: ProductCatalogStore
@@ -6,6 +7,7 @@ struct ContentView: View {
     @StateObject private var authStore: AuthStore
     @StateObject private var preferencesStore = PreferencesStore()
     @StateObject private var onboardingStore: OnboardingStore
+    @EnvironmentObject private var languageStore: PicklyLanguageStore
     @State private var selectedTab = PicklyTab.search
 
     init(
@@ -20,6 +22,14 @@ struct ContentView: View {
             wrappedValue: onboardingStore ?? OnboardingStore()
         )
         _authStore = StateObject(wrappedValue: authStore ?? AuthStore())
+
+#if DEBUG
+        if let argumentIndex = ProcessInfo.processInfo.arguments.firstIndex(of: "-pickly-tab"),
+           let rawTab = ProcessInfo.processInfo.arguments.dropFirst(argumentIndex + 1).first,
+           let tab = PicklyTab(rawValue: rawTab) {
+            _selectedTab = State(initialValue: tab)
+        }
+#endif
     }
 
     var body: some View {
@@ -39,17 +49,7 @@ struct ContentView: View {
         .animation(.spring(response: 0.42, dampingFraction: 0.88), value: onboardingStore.hasCompletedOnboarding)
         .task {
             await productCatalog.loadInitial()
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { authStore.isRecoveringPassword },
-                set: { isPresented in
-                    guard !isPresented, authStore.isRecoveringPassword else { return }
-                    Task { await authStore.cancelPasswordRecovery() }
-                }
-            )
-        ) {
-            PasswordRecoveryView(authStore: authStore)
+            savedStore.refreshSnapshots(from: productCatalog.products)
         }
     }
 
@@ -66,7 +66,7 @@ struct ContentView: View {
                 )
             }
             .tabItem {
-                Label("Search", picklyIcon: "magnifyingglass", iconSize: 22)
+                Label("Home", systemImage: "house.fill")
             }
             .tag(PicklyTab.search)
 
@@ -134,7 +134,7 @@ struct ContentView: View {
     }
 }
 
-private enum PicklyTab: Hashable {
+private enum PicklyTab: String, Hashable {
     case search
     case scan
     case saved
@@ -144,4 +144,5 @@ private enum PicklyTab: Hashable {
 #Preview {
     ContentView(catalog: .preview)
         .environmentObject(SubscriptionStore(loadProducts: false))
+        .environmentObject(PicklyLanguageStore())
 }

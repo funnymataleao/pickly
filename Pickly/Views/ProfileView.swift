@@ -1,4 +1,7 @@
+import AuthenticationServices
 import SwiftUI
+import StoreKit
+import UIKit
 
 struct ProfileView: View {
     @Binding var preferences: UserPreferences
@@ -7,7 +10,17 @@ struct ProfileView: View {
     var onAccountDeleted: () -> Void = {}
 
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
+    @EnvironmentObject private var languageStore: PicklyLanguageStore
+    @Environment(\.openURL) private var openURL
     @State private var activeSheet: ProfileSheet?
+
+    private var isSignedIn: Bool {
+        if case .signedIn = authStore.state {
+            return true
+        }
+
+        return false
+    }
 
     var body: some View {
         List {
@@ -37,15 +50,35 @@ struct ProfileView: View {
                 }
                 .buttonStyle(.plain)
 
-                if subscriptionStore.isPlus {
-                    Link(destination: URL(string: "itms-apps://apps.apple.com/account/subscriptions")!) {
+                if isSignedIn {
+                    Button(role: .destructive) {
+                        activeSheet = .deleteAccount
+                    } label: {
                         SettingsActionRow(
-                            icon: .system("arrow.up.right.square"),
-                            tone: .pro,
-                            title: "Manage Subscription",
-                            subtitle: "Open Apple ID subscription settings"
+                            icon: .system("trash"),
+                            tone: .account,
+                            title: "Delete Account",
+                            subtitle: "Permanently remove your account and synced data",
+                            isDestructive: true
                         )
                     }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Section("Language") {
+                Picker(selection: $languageStore.selection) {
+                    ForEach(PicklyLanguageSelection.allCases) { option in
+                        Text(option.nativeName)
+                            .tag(option)
+                    }
+                } label: {
+                    SettingsLabel(
+                        icon: .system("globe"),
+                        tone: .privacy,
+                        title: "Language",
+                        subtitle: languageStore.selection.nativeName
+                    )
                 }
             }
 
@@ -121,6 +154,22 @@ struct ProfileView: View {
                     )
                 }
                 .buttonStyle(.plain)
+
+                Button {
+                    Task {
+                        await SubscriptionManagementPresenter.present(openURL: openURL)
+                    }
+                } label: {
+                    SettingsActionRow(
+                        icon: .system("arrow.up.right.square"),
+                        tone: .pro,
+                        title: "Manage Subscription",
+                        subtitle: subscriptionStore.isPlus
+                            ? "Review or cancel your active subscription"
+                            : "Open App Store subscription settings"
+                    )
+                }
+                .buttonStyle(.plain)
             }
 
             Section("Data & privacy") {
@@ -137,6 +186,18 @@ struct ProfileView: View {
                     title: "Personal data",
                     subtitle: "Saved products and preferences stay on this device."
                 )
+
+                Button {
+                    activeSheet = .scoringMethodology
+                } label: {
+                    SettingsActionRow(
+                        icon: .system("info.circle.fill"),
+                        tone: .privacy,
+                        title: "How scoring works",
+                        subtitle: "Data, factors, confidence, and important limits"
+                    )
+                }
+                .buttonStyle(.plain)
 
                 Button {
                     activeSheet = .privacyPolicy
@@ -156,6 +217,9 @@ struct ProfileView: View {
         .scrollContentBackground(.hidden)
         .background(PicklyColor.background)
         .toolbar(.hidden, for: .navigationBar)
+        .task {
+            await authStore.restoreSessionIfNeeded()
+        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .account:
@@ -163,8 +227,18 @@ struct ProfileView: View {
                     authStore: authStore,
                     onAccountDeleted: onAccountDeleted
                 )
+            case .deleteAccount:
+                AccountAuthView(
+                    authStore: authStore,
+                    onAccountDeleted: onAccountDeleted,
+                    presentsDeleteConfirmationOnAppear: true
+                )
             case .paywall:
                 PicklyPaywallView()
+            case .scoringMethodology:
+                NavigationStack {
+                    ScoringMethodologyView(showsDoneButton: true)
+                }
             case .privacyPolicy:
                 PrivacyPolicyView()
             }
@@ -174,7 +248,9 @@ struct ProfileView: View {
 
 private enum ProfileSheet: String, Identifiable {
     case account
+    case deleteAccount
     case paywall
+    case scoringMethodology
     case privacyPolicy
 
     var id: String { rawValue }
@@ -291,10 +367,17 @@ private struct SettingsActionRow: View {
     let tone: PicklyColor.ProfileTone
     let title: String
     let subtitle: String
+    var isDestructive = false
 
     var body: some View {
         HStack(spacing: 12) {
-            SettingsLabel(icon: icon, tone: tone, title: title, subtitle: subtitle)
+            SettingsLabel(
+                icon: icon,
+                tone: tone,
+                title: title,
+                subtitle: subtitle,
+                isDestructive: isDestructive
+            )
 
             Spacer(minLength: 8)
 
@@ -321,6 +404,7 @@ private struct SettingsLabel: View {
     let tone: PicklyColor.ProfileTone
     let title: String
     let subtitle: String
+    var isDestructive = false
 
     private var palette: PicklyColor.StatusPalette {
         PicklyColor.profilePalette(tone)
@@ -333,7 +417,7 @@ private struct SettingsLabel: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.body)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(isDestructive ? Color.red : Color.primary)
 
                 Text(subtitle)
                     .font(.caption)
@@ -410,9 +494,12 @@ private enum AccountFocusedField {
 
 struct AccountAuthView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var authStore: AuthStore
     let onAccountDeleted: () -> Void
     var showsSocialProviders = true
+    var presentsDeleteConfirmationOnAppear = false
 
     @State private var mode: EmailAuthMode = .create
     @State private var email = ""
@@ -420,6 +507,7 @@ struct AccountAuthView: View {
     @State private var showDeleteConfirmation = false
     @State private var isDeletingAccount = false
     @State private var deletionErrorMessage: String?
+    @State private var hasPresentedInitialDeleteConfirmation = false
     @FocusState private var focusedField: AccountFocusedField?
 
     private var canSubmit: Bool {
@@ -444,9 +532,6 @@ struct AccountAuthView: View {
                                 signedInCard
                             case .needsEmailConfirmation(let email):
                                 confirmationCard(email: email)
-                            case .recoveringPassword:
-                                ProgressView("Preparing password reset…")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                     }
@@ -473,6 +558,7 @@ struct AccountAuthView: View {
             }
             .task {
                 await authStore.restoreSessionIfNeeded()
+                presentInitialDeleteConfirmationIfNeeded()
             }
         }
     }
@@ -546,7 +632,7 @@ struct AccountAuthView: View {
                         || !email.contains("@")
                 )
                 .frame(minHeight: 44, alignment: .leading)
-                .accessibilityHint("Sends a password reset link to the entered email address.")
+                .accessibilityHint("Sends a secure password reset link. Finish the reset in your email, then return to Pickly to sign in.")
             }
 
             if !authStore.isConfigured {
@@ -572,7 +658,7 @@ struct AccountAuthView: View {
                 HStack(spacing: 10) {
                     if authStore.isWorking {
                         ProgressView()
-                            .tint(.black)
+                            .tint(PicklyColor.onPrimary(for: colorScheme))
                     } else {
                         PicklyIconImage(systemName: "envelope.fill", size: 18)
                     }
@@ -604,6 +690,10 @@ struct AccountAuthView: View {
                 }
             }
 
+            if authStore.requiresAppleReauthentication {
+                appleDeletionConfirmationCard
+            }
+
             Button("Sign out") {
                 Task {
                     await authStore.signOut()
@@ -631,6 +721,12 @@ struct AccountAuthView: View {
                 isPresented: $showDeleteConfirmation,
                 titleVisibility: .visible
             ) {
+                Button("Manage Subscription") {
+                    Task {
+                        await SubscriptionManagementPresenter.present(openURL: openURL)
+                    }
+                }
+
                 Button("Delete Account", role: .destructive) {
                     Task {
                         isDeletingAccount = true
@@ -640,7 +736,7 @@ struct AccountAuthView: View {
                         if await authStore.deleteAccount() {
                             onAccountDeleted()
                             dismiss()
-                        } else {
+                        } else if !authStore.requiresAppleReauthentication {
                             deletionErrorMessage = authStore.statusMessage
                                 ?? "Your account could not be deleted. Please try again."
                         }
@@ -649,7 +745,7 @@ struct AccountAuthView: View {
 
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This permanently removes your account and server-side profile data. Local saved products will also be cleared. App Store subscriptions are separate and must be canceled in Apple ID settings.")
+                Text("This permanently removes your account and server-side profile data. Local saved products will also be cleared. If you have Pickly Plus, billing continues through Apple until you cancel. Manage your subscription before deleting if you do not want it to renew.")
             }
 
             if let errorMessage = deletionErrorMessage {
@@ -669,6 +765,37 @@ struct AccountAuthView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .picklyCardSurface(cornerRadius: 24, stroke: PicklyColor.stroke.opacity(0.5))
+    }
+
+    private var appleDeletionConfirmationCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Confirm with Apple", systemImage: "apple.logo")
+                .font(.headline)
+
+            Text("Apple requires a recent sign-in before Pickly can permanently delete this account. Your account stays active until you confirm.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            SignInWithAppleButton(.continue) { request in
+                authStore.configureAppleDeletionRequest(request)
+            } onCompletion: { result in
+                Task {
+                    if await authStore.completeAppleAccountDeletion(result) {
+                        onAccountDeleted()
+                        dismiss()
+                    }
+                }
+            }
+            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+            .frame(maxWidth: .infinity, minHeight: 50, maxHeight: 50)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .disabled(!authStore.isConfigured || authStore.isWorking)
+            .accessibilityLabel("Confirm with Apple to delete your account")
+            .accessibilityHint("Reauthenticates your Apple Account, revokes the Apple session, and permanently deletes your Pickly account.")
+        }
+        .padding(14)
+        .background(PicklyColor.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func confirmationCard(email: String) -> some View {
@@ -710,141 +837,36 @@ struct AccountAuthView: View {
             }
         }
     }
-}
 
-private enum PasswordRecoveryField {
-    case password
-    case confirmation
-}
-
-struct PasswordRecoveryView: View {
-    @ObservedObject var authStore: AuthStore
-
-    @State private var password = ""
-    @State private var confirmation = ""
-    @State private var validationMessage: String?
-    @FocusState private var focusedField: PasswordRecoveryField?
-
-    private var canSubmit: Bool {
-        password.count >= 8
-            && password == confirmation
-            && !authStore.isWorking
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    AccountStatusIcon(systemName: "key.fill")
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Choose a new password")
-                            .font(.largeTitle.bold())
-                            .accessibilityAddTraits(.isHeader)
-
-                        Text("Use at least 8 characters. After saving, you’ll stay signed in on this device.")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    VStack(spacing: 14) {
-                        recoveryField(
-                            title: "New password",
-                            prompt: "At least 8 characters",
-                            text: $password,
-                            focus: .password,
-                            submitLabel: .next
-                        ) {
-                            focusedField = .confirmation
-                        }
-
-                        recoveryField(
-                            title: "Confirm password",
-                            prompt: "Enter it again",
-                            text: $confirmation,
-                            focus: .confirmation,
-                            submitLabel: .done
-                        ) {
-                            submit()
-                        }
-                    }
-
-                    if let message = validationMessage ?? authStore.statusMessage {
-                        AccountStatusMessage(icon: "info.circle.fill", text: message)
-                    }
-
-                    Button(action: submit) {
-                        HStack(spacing: 10) {
-                            if authStore.isWorking {
-                                ProgressView().tint(.black)
-                            }
-                            Text(authStore.isWorking ? "Saving…" : "Update password")
-                                .font(.headline.weight(.semibold))
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(AccountPrimaryButtonStyle())
-                    .disabled(!canSubmit)
-                }
-                .padding(PicklyLayout.screenHorizontalPadding)
-            }
-            .background(PicklyColor.background)
-            .navigationTitle("Reset password")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        Task { await authStore.cancelPasswordRecovery() }
-                    }
-                }
-            }
-            .interactiveDismissDisabled(authStore.isWorking)
-        }
-    }
-
-    private func recoveryField(
-        title: String,
-        prompt: String,
-        text: Binding<String>,
-        focus: PasswordRecoveryField,
-        submitLabel: SubmitLabel,
-        onSubmit: @escaping () -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-
-            SecureField(prompt, text: text)
-                .textContentType(.newPassword)
-                .focused($focusedField, equals: focus)
-                .submitLabel(submitLabel)
-                .onSubmit(onSubmit)
-                .padding(.horizontal, 14)
-                .frame(minHeight: 52)
-                .background(PicklyColor.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(PicklyColor.stroke.opacity(0.6), lineWidth: 1)
-                }
-        }
-    }
-
-    private func submit() {
-        focusedField = nil
-        validationMessage = nil
-
-        guard password.count >= 8 else {
-            validationMessage = "Use at least 8 characters."
-            return
-        }
-        guard password == confirmation else {
-            validationMessage = "Passwords don’t match."
+    private func presentInitialDeleteConfirmationIfNeeded() {
+        guard
+            presentsDeleteConfirmationOnAppear,
+            !hasPresentedInitialDeleteConfirmation,
+            case .signedIn = authStore.state
+        else {
             return
         }
 
-        Task {
-            _ = await authStore.updatePassword(password)
+        hasPresentedInitialDeleteConfirmation = true
+        showDeleteConfirmation = true
+    }
+}
+
+private enum SubscriptionManagementPresenter {
+    @MainActor
+    static func present(openURL: OpenURLAction) async {
+        guard let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+        else {
+            openURL(SubscriptionStore.managementURL)
+            return
+        }
+
+        do {
+            try await AppStore.showManageSubscriptions(in: windowScene)
+        } catch {
+            openURL(SubscriptionStore.managementURL)
         }
     }
 }
@@ -975,13 +997,16 @@ private struct AccountStatusMessage: View {
 }
 
 private struct AccountPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .frame(minHeight: 52)
             .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
-            .foregroundStyle(isEnabled ? Color.black : Color.secondary)
+            .foregroundStyle(
+                isEnabled ? PicklyColor.onPrimary(for: colorScheme) : Color.secondary
+            )
             .background(
                 isEnabled ? PicklyColor.primary : PicklyColor.stroke.opacity(0.7),
                 in: Capsule()
@@ -1014,4 +1039,5 @@ private struct AccountSecondaryButtonStyle: ButtonStyle {
         )
     }
     .environmentObject(SubscriptionStore(loadProducts: false))
+    .environmentObject(PicklyLanguageStore())
 }

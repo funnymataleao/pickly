@@ -1,6 +1,7 @@
 import Foundation
 
-nonisolated struct SupabaseProductService: Sendable {
+@MainActor
+struct CloudflareProductService {
     enum ServiceError: LocalizedError {
         case notConfigured
         case invalidURL
@@ -23,29 +24,33 @@ nonisolated struct SupabaseProductService: Sendable {
     }
 
     private let session: URLSession
-    init(session: URLSession = .shared) {
+    private let localeContext: PicklyLocaleContext
+
+    init(
+        session: URLSession = .shared,
+        localeContext: PicklyLocaleContext = .current
+    ) {
         self.session = session
+        self.localeContext = localeContext
     }
 
     var isConfigured: Bool {
-        SupabaseCredentials.isConfigured
+        PicklyAPIConfiguration.isConfigured
     }
 
     func fetchPublishedProducts(limit: Int = 60) async throws -> [Product] {
         let data = try await request(
-            path: "rest/v1/products",
+            path: "v1/products",
             query: [
-                URLQueryItem(name: "select", value: ProductRow.selectFields),
-                URLQueryItem(name: "is_published", value: "eq.true"),
-                URLQueryItem(name: "order", value: "updated_at.desc"),
-                URLQueryItem(name: "limit", value: String(max(1, min(limit, 100))))
+                URLQueryItem(name: "limit", value: String(max(1, min(limit, 100)))),
+                URLQueryItem(name: "lang", value: localeContext.openFoodFactsLanguageCode)
             ]
         )
 
         do {
             return try JSONDecoder()
                 .decode([ProductRow].self, from: data)
-                .map(Product.init(row:))
+                .map { Product(row: $0, localeContext: localeContext) }
         } catch {
             throw ServiceError.decoding(error)
         }
@@ -57,29 +62,19 @@ nonisolated struct SupabaseProductService: Sendable {
             return []
         }
 
-        let safeQuery = trimmedQuery
-            .replacingOccurrences(of: "*", with: "")
-            .replacingOccurrences(of: ",", with: " ")
-            .replacingOccurrences(of: "(", with: " ")
-            .replacingOccurrences(of: ")", with: " ")
-        let wildcard = "*\(safeQuery)*"
-        let orFilter = "(name.ilike.\(wildcard),brand.ilike.\(wildcard),category.ilike.\(wildcard),barcode.ilike.\(wildcard))"
-
         let data = try await request(
-            path: "rest/v1/products",
+            path: "v1/products",
             query: [
-                URLQueryItem(name: "select", value: ProductRow.selectFields),
-                URLQueryItem(name: "is_published", value: "eq.true"),
-                URLQueryItem(name: "or", value: orFilter),
-                URLQueryItem(name: "order", value: "score.desc.nullslast"),
-                URLQueryItem(name: "limit", value: String(max(1, min(limit, 100))))
+                URLQueryItem(name: "q", value: trimmedQuery),
+                URLQueryItem(name: "limit", value: String(max(1, min(limit, 100)))),
+                URLQueryItem(name: "lang", value: localeContext.openFoodFactsLanguageCode)
             ]
         )
 
         do {
             return try JSONDecoder()
                 .decode([ProductRow].self, from: data)
-                .map(Product.init(row:))
+                .map { Product(row: $0, localeContext: localeContext) }
         } catch {
             throw ServiceError.decoding(error)
         }
@@ -87,23 +82,14 @@ nonisolated struct SupabaseProductService: Sendable {
 
     func fetchProduct(barcode: String) async throws -> Product? {
         let data = try await request(
-            path: "rest/v1/products",
-            query: [
-                URLQueryItem(name: "select", value: ProductRow.selectFields),
-                URLQueryItem(name: "barcode", value: "eq.\(barcode)"),
-                URLQueryItem(name: "is_published", value: "eq.true"),
-                URLQueryItem(name: "limit", value: "1")
-            ]
+            path: "v1/products/barcode/\(barcode)",
+            query: [URLQueryItem(name: "lang", value: localeContext.openFoodFactsLanguageCode)]
         )
 
         do {
-            guard let row = try JSONDecoder().decode([ProductRow].self, from: data).first else {
-                return nil
-            }
-
-            var product = Product(row: row)
-            product = try await attachAlternatives(to: product)
-            return product
+            let row = try JSONDecoder().decode(ProductRow.self, from: data)
+            return Product(row: row, localeContext: localeContext)
+                .withAlternativeIDs(row.alternativeIDs ?? [])
         } catch let error as ServiceError {
             throw error
         } catch {
@@ -111,35 +97,13 @@ nonisolated struct SupabaseProductService: Sendable {
         }
     }
 
-    private func attachAlternatives(to product: Product) async throws -> Product {
-        let data = try await request(
-            path: "rest/v1/product_alternatives",
-            query: [
-                URLQueryItem(name: "select", value: "alternative_product_id"),
-                URLQueryItem(name: "product_id", value: "eq.\(product.id)"),
-                URLQueryItem(name: "order", value: "rank.asc")
-            ]
-        )
-
-        do {
-            let rows = try JSONDecoder().decode([AlternativeRow].self, from: data)
-            return product.withAlternativeIDs(rows.map(\.alternativeProductID))
-        } catch {
-            throw ServiceError.decoding(error)
-        }
-    }
-
     private func request(path: String, query: [URLQueryItem]) async throws -> Data {
-        guard SupabaseCredentials.isConfigured else {
+        guard let baseURL = PicklyAPIConfiguration.baseURL else {
             throw ServiceError.notConfigured
         }
 
-        guard let projectURL = SupabaseCredentials.projectURL else {
-            throw ServiceError.invalidURL
-        }
-
         var components = URLComponents(
-            url: projectURL.appending(path: path),
+            url: baseURL.appending(path: path),
             resolvingAgainstBaseURL: false
         )
         components?.queryItems = query
@@ -151,7 +115,6 @@ nonisolated struct SupabaseProductService: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 8
-        request.setValue(SupabaseCredentials.publishableKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let data: Data
@@ -199,8 +162,11 @@ nonisolated private struct ProductRow: Decodable, Sendable {
     let id: String
     let barcode: String?
     let name: String
+    let displayName: String?
+    let displayLanguage: String?
     let brand: String?
     let category: String
+    let displayCategory: String?
     let imageURL: URL?
     let ingredients: [String]
     let nutrition: Product.Nutrition
@@ -213,13 +179,17 @@ nonisolated private struct ProductRow: Decodable, Sendable {
     let confidence: String
     let source: String
     let scoreVersion: String?
+    let alternativeIDs: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
         case barcode
         case name
+        case displayName = "pickly_display_name"
+        case displayLanguage = "pickly_display_language"
         case brand
         case category
+        case displayCategory = "pickly_display_category"
         case imageURL = "image_url"
         case ingredients
         case nutrition
@@ -232,14 +202,7 @@ nonisolated private struct ProductRow: Decodable, Sendable {
         case confidence
         case source
         case scoreVersion = "score_version"
-    }
-}
-
-nonisolated private struct AlternativeRow: Decodable, Sendable {
-    let alternativeProductID: String
-
-    enum CodingKeys: String, CodingKey {
-        case alternativeProductID = "alternative_product_id"
+        case alternativeIDs = "alternative_ids"
     }
 }
 
@@ -263,8 +226,8 @@ nonisolated enum ServerScoringPolicy {
 }
 
 nonisolated private extension Product {
-    init(row: ProductRow) {
-        let fallbackScoring = ScoringService().evaluate(
+    init(row: ProductRow, localeContext: PicklyLocaleContext) {
+        let fallbackScoring = ScoringService(localeContext: localeContext).evaluate(
             nutrition: row.nutrition,
             ingredients: row.ingredients,
             additivesTags: [],
@@ -276,18 +239,25 @@ nonisolated private extension Product {
             ingredients: row.ingredients
         )
         let score = hasCuratedScoring ? row.score : fallbackScoring.score
-        let summary = hasCuratedScoring ? row.summary : fallbackScoring.summary
-        let reasons = hasCuratedScoring ? row.reasons : fallbackScoring.reasons
-        let warnings = hasCuratedScoring ? row.warnings : fallbackScoring.warnings
-        let positives = hasCuratedScoring ? row.positives : fallbackScoring.positives
-        let confidence = hasCuratedScoring ? row.confidence : fallbackScoring.confidence
+        // Stored prose is a legacy English snapshot. Keep the curated numeric
+        // score, but render all explanations through the current locale.
+        let summary = fallbackScoring.summary
+        let reasons = fallbackScoring.reasons
+        let warnings = fallbackScoring.warnings
+        let positives = fallbackScoring.positives
+        let confidence = fallbackScoring.confidence
 
         self.init(
             id: row.id,
             barcode: row.barcode ?? row.id,
-            name: row.name,
+            name: row.displayName ?? EnglishProductNameResolver.resolvedName(
+                candidates: [row.name],
+                brand: row.brand,
+                category: row.displayCategory ?? row.category,
+                categoryTags: []
+            ),
             brand: row.brand ?? "Unknown brand",
-            category: row.category,
+            category: row.displayCategory ?? row.category,
             imageName: "photo",
             imageURL: row.imageURL,
             ingredients: row.ingredients,
@@ -300,7 +270,7 @@ nonisolated private extension Product {
             reasons: reasons,
             warnings: warnings,
             positives: positives,
-            forYouNotes: hasCuratedScoring ? [] : fallbackScoring.forYouNotes,
+            forYouNotes: fallbackScoring.forYouNotes,
             alternativeIDs: [],
             confidence: confidence,
             source: Self.source(from: row.source)

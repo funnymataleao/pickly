@@ -8,58 +8,44 @@ struct ResultScreen: View {
     let preferences: UserPreferences
     var onScanAnotherProduct: (() -> Void)?
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
-    @State private var isShowingSkeleton = true
-    @State private var imageRevealed = false
-    @State private var displayedScore = 0
-    @State private var showVerdict = false
-    @State private var visibleInsightCount = 0
     @State private var showStickyHeader = false
     @State private var saveBounce = false
     @State private var showPaywall = false
+    @State private var alternativeSelection = AlternativeShelfSelection(kind: .similar, products: [])
+    @State private var isLoadingRelatedProducts = false
+    @State private var hasLoadedRelatedProducts = false
+    @State private var relatedProductsErrorMessage: String?
 
     // One native content grid for the image, verdict, and every detail card.
     private let contentHorizontalInset = PicklyLayout.screenHorizontalPadding
 
-    private var alternatives: [Product] {
-        productService.alternatives(for: product)
-    }
-
-    private var alternativePreviewProducts: [Product] {
-        return AlternativePreviewBuilder.products(
-            for: product,
-            alternatives: alternatives,
-            catalog: productService.products,
-            limit: 30
-        )
+    private var visibleInsights: [ProductInsight] {
+        product.keyInsights.filter { $0.resultStatus != .unknown }
     }
 
     private var shouldShowStickyHeader: Bool {
-        showStickyHeader && !isShowingSkeleton
+        showStickyHeader
     }
 
     private var shouldShowDataConfidence: Bool {
-        product.isLimitedData || product.name == "Unknown product" || product.ingredients.isEmpty
+        product.isLimitedData || product.name == "Unknown product"
     }
 
     var body: some View {
         ZStack(alignment: .top) {
-            if isShowingSkeleton {
-                ResultSkeletonView()
-                    .transition(.opacity)
-            } else {
+            ScrollViewReader { proxy in
                 ScrollView {
                     scrollOffsetReader
 
                     VStack(alignment: .leading, spacing: 22) {
                         ResultHero(
                             product: product,
-                            imageRevealed: imageRevealed,
-                            displayedScore: displayedScore,
-                            showVerdict: showVerdict
+                            imageRevealed: true,
+                            displayedScore: product.score ?? 0,
+                            showVerdict: true
                         )
 
                         if product.isSampleData {
@@ -67,36 +53,46 @@ struct ResultScreen: View {
                         }
 
                         KeyInsights(
-                            insights: product.keyInsights,
-                            visibleCount: visibleInsightCount
+                            insights: visibleInsights,
+                            visibleCount: visibleInsights.count
                         )
+
+                        AlternativesResultSection(
+                            product: product,
+                            selection: alternativeSelection,
+                            productService: productService,
+                            savedStore: savedStore,
+                            preferences: preferences,
+                            onScanAnotherProduct: onScanAnotherProduct,
+                            isPlus: subscriptionStore.isPlus,
+                            isLoading: isLoadingRelatedProducts,
+                            errorMessage: relatedProductsErrorMessage,
+                            onRetry: {
+                                Task {
+                                    await retryRelatedProducts()
+                                }
+                            },
+                            onUpgrade: { showPaywall = true }
+                        )
+                        .id("better-choices")
 
                         WatchOutsSection(warnings: product.warnings)
 
-                        ForYouSection(notes: product.forYouMessages(preferences: preferences))
-
-                        IngredientsSection(ingredients: product.ingredientAnalyses)
+                        if !product.ingredients.isEmpty {
+                            IngredientsSection(ingredients: product.ingredientAnalyses)
+                        }
 
                         if shouldShowDataConfidence {
-                            DataConfidenceCard(
-                                onScanAgain: scanAnotherProduct
-                            )
+                            DataConfidenceCard()
                         }
 
                         NutritionSummary(product: product)
 
+                        ScoringMethodologyLinkCard()
+
                         if !product.recommendations.isEmpty {
                             RecommendationsCard(recommendations: product.recommendations)
                         }
-
-                        AlternativesResultSection(
-                            product: product,
-                            alternatives: alternatives,
-                            previewProducts: alternativePreviewProducts,
-                            savedStore: savedStore,
-                            isPlus: subscriptionStore.isPlus,
-                            onUpgrade: { showPaywall = true }
-                        )
 
                         ResultActions(
                             isSaved: savedStore.isSaved(product),
@@ -116,9 +112,17 @@ struct ResultScreen: View {
                     guard shouldShow != showStickyHeader else { return }
                     showStickyHeader = shouldShow
                 }
-                .transition(.opacity)
+                .onAppear {
+#if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("-pickly-scroll-alternatives") {
+                        Task { @MainActor in
+                            await Task.yield()
+                            proxy.scrollTo("better-choices", anchor: .top)
+                        }
+                    }
+#endif
+                }
             }
-
         }
         .background(PicklyColor.background)
         .navigationTitle(shouldShowStickyHeader ? product.resultDisplayName : "")
@@ -127,7 +131,7 @@ struct ResultScreen: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: toggleSave) {
                     PicklyIconImage(
-                        systemName: savedStore.isSaved(product) ? "bookmark.fill" : "bookmark",
+                        systemName: savedStore.isSaved(product) ? "bookmark.fill" : "bookmark.outline",
                         size: 19
                     )
                     .foregroundStyle(savedStore.isSaved(product) ? PicklyColor.primary : .primary)
@@ -142,8 +146,14 @@ struct ResultScreen: View {
         // here obscures the first result card and competes with the native back action.
         .toolbar(.hidden, for: .tabBar)
         .task(id: product.id) {
+            // History is not needed to draw the destination. Let the native
+            // push finish first and cancel this work if the user immediately
+            // goes back.
+            guard await pauseBackgroundWork(for: 350_000_000) else { return }
             savedStore.recordView(product)
-            await runRevealSequence()
+        }
+        .task(id: "related-\(product.id)") {
+            await loadRelatedProducts()
         }
         .sheet(isPresented: $showPaywall) {
             PicklyPaywallView(entryPoint: .alternatives)
@@ -161,75 +171,86 @@ struct ResultScreen: View {
         .frame(height: 0)
     }
 
-    @MainActor
-    private func runRevealSequence() async {
-        resetRevealState()
-
-        let finalScore = product.score ?? 0
-        if reduceMotion {
-            isShowingSkeleton = false
-            imageRevealed = true
-            displayedScore = finalScore
-            showVerdict = true
-            visibleInsightCount = product.keyInsights.count
-            return
-        }
-
-        guard await pauseReveal(for: 80_000_000) else { return }
-        guard !Task.isCancelled else { return }
-
-        withAnimation(.easeOut(duration: 0.16)) {
-            isShowingSkeleton = false
-        }
-
-        guard await pauseReveal(for: 40_000_000) else { return }
-        guard !Task.isCancelled else { return }
-
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-            imageRevealed = true
-        }
-
-        withAnimation(.easeOut(duration: 0.18)) {
-            showVerdict = true
-            visibleInsightCount = product.keyInsights.count
-        }
-
-        guard !Task.isCancelled else { return }
-        playAnalysisHaptic()
-        await countScore(to: finalScore)
-    }
-
-    @MainActor
-    private func resetRevealState() {
-        isShowingSkeleton = true
-        imageRevealed = false
-        displayedScore = 0
-        showVerdict = false
-        visibleInsightCount = 0
-    }
-
-    @MainActor
-    private func countScore(to finalScore: Int) async {
-        guard finalScore > 0 else {
-            displayedScore = 0
-            return
-        }
-
-        let steps = 16
-        for step in 0...steps {
-            guard !Task.isCancelled else { return }
-            displayedScore = Int((Double(finalScore) * Double(step) / Double(steps)).rounded())
-            guard await pauseReveal(for: 14_000_000) else { return }
-        }
-    }
-
-    private func pauseReveal(for nanoseconds: UInt64) async -> Bool {
+    private func pauseBackgroundWork(for nanoseconds: UInt64) async -> Bool {
         do {
             try await Task.sleep(nanoseconds: nanoseconds)
             return !Task.isCancelled
         } catch {
             return false
         }
+    }
+
+    @MainActor
+    private func loadRelatedProducts() async {
+        guard !hasLoadedRelatedProducts else { return }
+        relatedProductsErrorMessage = nil
+        isLoadingRelatedProducts = true
+        defer { isLoadingRelatedProducts = false }
+
+        // Keep the initial push completely free for navigation and touch
+        // handling. The shelf can populate a fraction of a second later.
+        guard await pauseBackgroundWork(for: 180_000_000) else { return }
+
+        // Ranking a large catalog during the push animation made the first tap
+        // feel ignored. Snapshot the actor-owned data, then rank it away from
+        // the main actor.
+        let catalog = productService.products
+        let localSelection = await Self.makeAlternativeSelection(
+            for: product,
+            alternatives: [],
+            catalog: catalog
+        )
+        guard !Task.isCancelled else { return }
+        applyAlternativeSelectionIfChanged(localSelection)
+
+        let relatedProducts = await productService.relatedProducts(for: product, limit: 100)
+        guard !Task.isCancelled else { return }
+        relatedProductsErrorMessage = productService.relatedProductsErrorMessage
+
+        let updatedCatalog = productService.products
+        let updatedSelection = await Self.makeAlternativeSelection(
+            for: product,
+            alternatives: relatedProducts,
+            catalog: updatedCatalog
+        )
+        guard !Task.isCancelled else { return }
+        applyAlternativeSelectionIfChanged(updatedSelection)
+        hasLoadedRelatedProducts = true
+    }
+
+    private func applyAlternativeSelectionIfChanged(_ selection: AlternativeShelfSelection) {
+        let currentIDs = alternativeSelection.products.map(\.id)
+        let updatedIDs = selection.products.map(\.id)
+        guard alternativeSelection.kind != selection.kind || currentIDs != updatedIDs else {
+            return
+        }
+        alternativeSelection = selection
+    }
+
+    @MainActor
+    private func retryRelatedProducts() async {
+        hasLoadedRelatedProducts = false
+        await loadRelatedProducts()
+    }
+
+    private nonisolated static func makeAlternativeSelection(
+        for product: Product,
+        alternatives: [Product],
+        catalog: [Product]
+    ) async -> AlternativeShelfSelection {
+        await Task.detached(priority: .userInitiated) {
+            let resolvedAlternatives = alternatives.isEmpty
+                ? product.alternativeIDs.compactMap { alternativeID in
+                    catalog.first { $0.id == alternativeID }
+                }
+                : alternatives
+            return AlternativePreviewBuilder.selection(
+                for: product,
+                alternatives: resolvedAlternatives,
+                catalog: catalog,
+                limit: 100
+            )
+        }.value
     }
 
     private func toggleSave() {
@@ -256,14 +277,6 @@ struct ResultScreen: View {
             await Task.yield()
             onScanAnotherProduct?()
         }
-    }
-
-    private func playAnalysisHaptic() {
-        guard !reduceMotion else {
-            return
-        }
-
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     private func playTapHaptic() {

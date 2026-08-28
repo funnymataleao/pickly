@@ -42,15 +42,15 @@ enum ProductRequestError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .missingConfiguration:
-            return "Product requests are unavailable right now."
+            return PicklyCopy.localized("Product requests are unavailable right now.")
         case .missingProductDetails:
-            return "Add a product name or a valid barcode."
+            return PicklyCopy.localized("Add a product name or a valid barcode.")
         case .invalidBarcode:
-            return "Enter a valid 8, 12, 13, or 14 digit barcode."
+            return PicklyCopy.localized("Enter a valid 8, 12, 13, or 14 digit barcode.")
         case .unauthorized:
-            return "Your session expired. Sign in again and retry."
+            return PicklyCopy.localized("Your session expired. Sign in again and retry.")
         case .requestFailed:
-            return "The request could not be sent. Please try again."
+            return PicklyCopy.localized("The request could not be sent. Please try again.")
         }
     }
 }
@@ -64,27 +64,23 @@ struct ProductRequestService {
 
     func submit(_ draft: ProductRequestDraft, session: AuthSession) async throws {
         guard
-            SupabaseCredentials.isConfigured,
-            let url = SupabaseCredentials.projectURL?.appending(path: "rest/v1/product_requests")
+            let baseURL = PicklyAPIConfiguration.baseURL
         else {
             throw ProductRequestError.missingConfiguration
         }
 
         let payload = Payload(
-            userID: session.user.id,
             barcode: draft.barcode,
             name: draft.name,
             brand: draft.brand,
             note: draft.note
         )
 
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: baseURL.appending(path: "v1/product-requests"))
         request.httpMethod = "POST"
         request.timeoutInterval = 10
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(SupabaseCredentials.publishableKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
         request.httpBody = try JSONEncoder().encode(payload)
 
         let response: URLResponse
@@ -111,18 +107,10 @@ struct ProductRequestService {
 
 private extension ProductRequestService {
     struct Payload: Encodable {
-        let userID: String
         let barcode: String?
         let name: String?
         let brand: String?
         let note: String?
 
-        enum CodingKeys: String, CodingKey {
-            case userID = "user_id"
-            case barcode
-            case name
-            case brand
-            case note
-        }
     }
 }

@@ -148,8 +148,8 @@ private struct OnboardingPreferenceOption: Identifiable {
     static let all: [OnboardingPreferenceOption] = [
         OnboardingPreferenceOption(
             id: "low-sugar",
-            title: "Low sugar",
-            subtitle: "Prefer products with less added sugar",
+            title: PicklyCopy.localized("Low sugar"),
+            subtitle: PicklyCopy.localized("Prefer products with less added sugar"),
             iconSystemName: GroceryGoal.lowSugar.preferenceIcon,
             iconText: nil,
             tone: .sugar,
@@ -157,8 +157,8 @@ private struct OnboardingPreferenceOption: Identifiable {
         ),
         OnboardingPreferenceOption(
             id: "low-sodium",
-            title: "Low sodium",
-            subtitle: "Prefer lower-sodium options",
+            title: PicklyCopy.localized("Low sodium"),
+            subtitle: PicklyCopy.localized("Prefer lower-sodium options"),
             iconSystemName: GroceryGoal.lowSodium.preferenceIcon,
             iconText: nil,
             tone: .sodium,
@@ -166,8 +166,8 @@ private struct OnboardingPreferenceOption: Identifiable {
         ),
         OnboardingPreferenceOption(
             id: "gentler-picks",
-            title: "Gentler picks",
-            subtitle: "Prefer simpler options that may feel easier to digest",
+            title: PicklyCopy.localized("Gentler picks"),
+            subtitle: PicklyCopy.localized("Prefer simpler options that may feel easier to digest"),
             iconSystemName: GroceryGoal.sensitiveDigestion.preferenceIcon,
             iconText: nil,
             tone: .digestion,
@@ -175,8 +175,8 @@ private struct OnboardingPreferenceOption: Identifiable {
         ),
         OnboardingPreferenceOption(
             id: "vegetarian",
-            title: "Vegetarian",
-            subtitle: "Prioritize vegetarian-friendly products",
+            title: PicklyCopy.localized("Vegetarian"),
+            subtitle: PicklyCopy.localized("Prioritize vegetarian-friendly products"),
             iconSystemName: GroceryGoal.vegetarian.preferenceIcon,
             iconText: nil,
             tone: .vegetarian,
@@ -184,8 +184,8 @@ private struct OnboardingPreferenceOption: Identifiable {
         ),
         OnboardingPreferenceOption(
             id: "vegan",
-            title: "Vegan",
-            subtitle: "Prefer products without animal ingredients",
+            title: PicklyCopy.localized("Vegan"),
+            subtitle: PicklyCopy.localized("Prefer products without animal ingredients"),
             iconSystemName: GroceryGoal.vegan.preferenceIcon,
             iconText: nil,
             tone: .vegan,
@@ -193,8 +193,8 @@ private struct OnboardingPreferenceOption: Identifiable {
         ),
         OnboardingPreferenceOption(
             id: "gluten-free",
-            title: "Gluten-free",
-            subtitle: "Flag products that may not fit this preference",
+            title: PicklyCopy.localized("Gluten-free"),
+            subtitle: PicklyCopy.localized("Flag products that may not fit this preference"),
             iconSystemName: GroceryGoal.glutenFree.preferenceIcon,
             iconText: nil,
             tone: .glutenFree,
@@ -202,8 +202,8 @@ private struct OnboardingPreferenceOption: Identifiable {
         ),
         OnboardingPreferenceOption(
             id: "lactose-free",
-            title: "Lactose-free",
-            subtitle: "Flag products that may not fit this preference",
+            title: PicklyCopy.localized("Lactose-free"),
+            subtitle: PicklyCopy.localized("Flag products that may not fit this preference"),
             iconSystemName: GroceryGoal.lactoseFree.preferenceIcon,
             iconText: nil,
             tone: .lactoseFree,

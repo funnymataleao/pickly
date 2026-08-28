@@ -41,6 +41,7 @@
 
 ### ✅ Other Data from Google Sign-In SDK
 - [x] **Other Data Types**
+  - App Store Connect draft: configured
   - Linked to user: YES
   - Used for tracking: NO
   - Purpose: **App Functionality, Analytics**
@@ -56,11 +57,12 @@
   - Used for tracking: NO
   - Purpose: **App Functionality**
 
-### ✅ Purchases
-- [x] **Purchase History**
-  - Linked to user: YES
+### ✅ Diagnostics
+- [x] **Other Diagnostic Data**
+  - Linked to user: NO
   - Used for tracking: NO
-  - Purpose: **App Functionality**
+  - Purpose: **Analytics**
+  - Source: Firebase Authentication 12.18.0 bundled privacy manifest
 
 ---
 
@@ -74,7 +76,9 @@
 - [ ] Browsing History
 - [ ] Search History
 - [ ] Advertising Data
-- [ ] Diagnostics
+- [ ] Crash Data
+- [ ] Performance Data
+- [ ] Purchase History — StoreKit entitlement is checked on device and is not sent to Pickly's servers
 - [ ] Sensitive Info
 
 ---
@@ -84,9 +88,10 @@
 **Do third parties have access?** → YES
 
 **Partners:**
-1. Supabase (Backend, Auth)
-2. Open Food Facts (Product lookup)
-3. Google Sign-In (Auth)
+1. Firebase Authentication (optional account authentication)
+2. Cloudflare (product catalog and account-linked requests)
+3. Open Food Facts (product lookup)
+4. Google Sign-In (optional authentication)
 
 ---
 
@@ -94,7 +99,8 @@
 
 - **Tracking:** NO (не использовать ATT)
 - **Advertising:** NO
-- **Analytics:** YES only for Google Sign-In SDK categories listed above; no standalone analytics or advertising SDK is present
+- **Analytics:** YES for the Google Sign-In SDK categories listed above and Firebase Authentication's unlinked Other Diagnostic Data; no standalone Firebase Analytics, crash-reporting, or advertising SDK is present
+- **Current draft:** all 10 selected data types are configured; User ID includes App Functionality + Analytics. Keep Publish pending until archive verification.
 
 ---
 

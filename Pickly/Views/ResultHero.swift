@@ -24,7 +24,8 @@ struct ResultHero: View {
                 title: product.resultHeadline,
                 subtitle: product.resultSummary,
                 confidence: product.confidenceText,
-                verdict: product.verdict,
+                isLowConfidence: product.confidence == "Low",
+                verdict: product.localizedVerdict,
                 displayedScore: displayedScore,
                 scoreColor: product.resultScoreColor,
                 verdictFill: product.resultScoreFillColor,
@@ -51,7 +52,7 @@ struct ResultHero: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(product.category)
+            Text(product.displayCategoryName)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -65,10 +66,10 @@ struct ResultHero: View {
 
     private var scoreAccessibilityLabel: String {
         guard !product.isLimitedData, let score = product.score else {
-            return "Limited data, no reliable score"
+            return PicklyCopy.localized("Limited data, no reliable score")
         }
 
-        return "Score \(score) out of 100"
+        return PicklyCopy.format("Score %@ out of 100", String(score))
     }
 }
 
@@ -76,6 +77,7 @@ private struct ProductResultVerdictCard: View {
     let title: String
     let subtitle: String
     let confidence: String
+    let isLowConfidence: Bool
     let verdict: String
     let displayedScore: Int
     let scoreColor: Color
@@ -165,15 +167,19 @@ private struct ProductResultVerdictCard: View {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text("\(displayedScore)")
                         .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
+                        .lineLimit(1)
                     Text("/100")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
+                .fixedSize(horizontal: true, vertical: true)
             }
         }
         .foregroundStyle(.primary)
         .padding(.horizontal, 12)
         .frame(minHeight: 48)
+        .fixedSize(horizontal: true, vertical: false)
         .background(
             PicklyColor.card.opacity(colorScheme == .dark ? 0.82 : 0.9),
             in: RoundedRectangle(cornerRadius: 15, style: .continuous)
@@ -191,13 +197,11 @@ private struct ProductResultVerdictCard: View {
 
         let value = confidence[confidence.index(after: separator)...]
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return "\(value.capitalized) confidence"
+        return PicklyCopy.format("%@ confidence", PicklyCopy.localized(value.capitalized))
     }
 
     private var confidenceIcon: String {
-        confidence.localizedCaseInsensitiveContains("low")
-            ? "info.circle.fill"
-            : "checkmark.shield.fill"
+        isLowConfidence ? "info.circle.fill" : "checkmark.shield.fill"
     }
 
     private var verdictIcon: String {
@@ -228,47 +232,21 @@ private struct ProductHeroImageView: View {
         GeometryReader { proxy in
             let imageSize = min(proxy.size.width, proxy.size.height)
 
-            Group {
-                if let imageURL = product.imageURL {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: imageSize, height: imageSize)
-                                .clipShape(heroShape)
-                        case .failure, .empty:
-                            fallbackImage(size: imageSize)
-                        @unknown default:
-                            fallbackImage(size: imageSize)
-                        }
-                    }
-                } else {
-                    fallbackImage(size: imageSize)
-                }
-            }
+            ProductThumbnailView(
+                product: product,
+                size: imageSize,
+                contentMode: .fill,
+                cornerRadius: cornerRadius
+            )
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .aspectRatio(1, contentMode: .fit)
         .frame(maxWidth: .infinity)
         .scaleEffect(imageRevealed ? 1 : 0.96)
         .opacity(imageRevealed ? 1 : 0)
-        .accessibilityLabel("\(product.resultDisplayName) image")
+        .accessibilityLabel(PicklyCopy.format("%@ image", product.resultDisplayName))
     }
 
-    private var heroShape: some Shape {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-    }
-
-    private func fallbackImage(size: CGFloat) -> some View {
-        ProductThumbnailView(
-            product: product,
-            size: size,
-            contentMode: .fill,
-            cornerRadius: cornerRadius
-        )
-    }
 }
 
 struct AnimatedScoreRing: View {

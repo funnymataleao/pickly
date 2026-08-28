@@ -86,8 +86,7 @@ struct PicklyInlineSearchField: View {
                     .accessibilityLabel("Clear search")
                 } else if let onScan {
                     Button(action: onScan) {
-                        Image(systemName: "barcode.viewfinder")
-                            .font(.system(size: 20, weight: .medium))
+                        PicklyIconImage(systemName: "barcode.viewfinder", size: 20)
                             .foregroundStyle(PicklyColor.primary)
                     }
                     .buttonStyle(.plain)
@@ -224,8 +223,7 @@ struct PicklyListSectionHeader: View {
                             .font(.subheadline.weight(.semibold))
 
                         if let actionIcon {
-                            Image(systemName: actionIcon)
-                                .font(.system(size: 13, weight: .semibold))
+                            PicklyIconImage(systemName: actionIcon, size: 13)
                         }
                     }
                     .foregroundStyle(PicklyColor.primary)

@@ -2,6 +2,22 @@ import Combine
 import Foundation
 import StoreKit
 
+enum PicklyPlusContentState: Equatable {
+    case unavailable
+    case locked
+    case unlocked
+}
+
+enum PicklyPlusContentGate {
+    static func state(isPlus: Bool, hasContent: Bool) -> PicklyPlusContentState {
+        guard hasContent else {
+            return .unavailable
+        }
+
+        return isPlus ? .unlocked : .locked
+    }
+}
+
 /// Owns the StoreKit entitlement used by Pickly's optional Plus features.
 ///
 /// Product availability is deliberately treated as a runtime concern. The app
@@ -27,9 +43,9 @@ final class SubscriptionStore: ObservableObject {
         var title: String {
             switch self {
             case .monthly:
-                return "Monthly"
+                return PicklyCopy.localized("Monthly")
             case .annual:
-                return "Annual"
+                return PicklyCopy.localized("Annual")
             }
         }
     }
@@ -41,14 +57,15 @@ final class SubscriptionStore: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .unavailable:
-                return "Pickly Plus is not available right now. Please try again later."
+                return PicklyCopy.localized("Pickly Plus is not available right now. Please try again later.")
             case .verificationFailed:
-                return "We couldn't verify that purchase. Please try again."
+                return PicklyCopy.localized("We couldn't verify that purchase. Please try again.")
             }
         }
     }
 
     static let productIDs = Plan.allCases.map(\.productID)
+    static let managementURL = URL(string: "https://apps.apple.com/account/subscriptions")!
 
     @Published private(set) var products: [StoreKit.Product] = []
     @Published private(set) var isPlus = false
@@ -61,6 +78,13 @@ final class SubscriptionStore: ObservableObject {
     private var hasStartedLoading = false
 
     init(loadProducts: Bool = true) {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-pickly-plus") {
+            self.shouldLoadProducts = false
+            self.isPlus = true
+            return
+        }
+#endif
         self.shouldLoadProducts = loadProducts
     }
 

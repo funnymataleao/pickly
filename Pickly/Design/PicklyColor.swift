@@ -43,6 +43,19 @@ enum PicklyColor {
 
     static let primary = Color("PicklyPrimary")
     static let onBrandAccent = Color.black
+
+    /// The dark brand green used for actions that must remain stable in both
+    /// light and dark appearance. `primary` intentionally adapts to a bright
+    /// lime in dark mode, so it is not suitable for this fixed white-on-green
+    /// action treatment.
+    static let brandDarkGreen = rgb(0x7D8A58)
+
+    /// Foreground for the primary button fill, which changes from a dark
+    /// olive in light mode to a bright lime in dark mode.
+    static func onPrimary(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? .black : .white
+    }
+
     static let deepMarket = Color("PicklyDeepMarket")
     static let mint = Color("PicklyMint")
     static let citrus = Color("PicklyCitrus")

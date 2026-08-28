@@ -26,7 +26,7 @@
       "id" : "PICKLYPLUS",
       "localizations" : [
         {
-          "description" : "Compare more grocery products with Pickly Plus.",
+          "description" : "Live grocery matches and comparisons.",
           "displayName" : "Pickly Plus",
           "locale" : "en_US"
         }
@@ -45,7 +45,7 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Pickly Plus monthly access.",
+              "description" : "Monthly live matches and comparisons.",
               "displayName" : "Pickly Plus Monthly",
               "locale" : "en_US"
             }
@@ -70,7 +70,7 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Pickly Plus annual access.",
+              "description" : "Annual live matches and comparisons.",
               "displayName" : "Pickly Plus Annual",
               "locale" : "en_US"
             }

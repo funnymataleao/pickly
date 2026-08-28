@@ -11,8 +11,9 @@ the device; signing in does not download seeded saved products or preferences.
    search the catalog, enter a barcode manually, scan a barcode, save a product,
    and inspect product results without signing in.
 3. If Apple asks for account-specific testing, create a temporary confirmed
-   Supabase email user and store its unique password only in a password manager
-   and App Store Connect. Never save the password in this repository.
+   Firebase Authentication email user and store its unique password only in a
+   password manager and App Store Connect. Never save the password in this
+   repository.
 
 Suggested Review Notes:
 
@@ -30,8 +31,9 @@ open Profile > Sign in and use Apple, Google, or email.
 3. Verify sign-out returns to the signed-out state.
 4. Verify **Delete account** removes the server account and clears local saved
    products and preferences.
-5. Verify **Forgot password?** sends a reset email and the link opens Pickly's
-   native password-reset sheet.
+5. Verify **Forgot password?** sends a Firebase reset email. Complete the
+   reset in the secure Firebase-hosted page, then return to Pickly and sign in
+   with the new password.
 
 Do not seed `user_saved_products` or `user_preferences` for review: the current
 app intentionally stores those values locally and does not read those tables.

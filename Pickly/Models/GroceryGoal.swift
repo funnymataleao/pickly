@@ -16,52 +16,35 @@ nonisolated enum GroceryGoal: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .all: "All"
-        case .lowSugar: "Low sugar"
-        case .lowSodium: "Low sodium"
-        case .highProtein: "High protein"
-        case .shortIngredients: "Short ingredients"
-        case .vegetarian: "Vegetarian"
-        case .vegan: "Vegan"
-        case .glutenFree: "Gluten-free"
-        case .lactoseFree: "Lactose-free"
-        case .sensitiveDigestion: "Gentler picks"
+        case .all: String(localized: "All")
+        case .lowSugar: String(localized: "Low sugar")
+        case .lowSodium: String(localized: "Low sodium")
+        case .highProtein: String(localized: "High protein")
+        case .shortIngredients: String(localized: "Short ingredients")
+        case .vegetarian: String(localized: "Vegetarian")
+        case .vegan: String(localized: "Vegan")
+        case .glutenFree: String(localized: "Gluten-free")
+        case .lactoseFree: String(localized: "Lactose-free")
+        case .sensitiveDigestion: String(localized: "Gentler picks")
         }
     }
 
     var productSectionTitle: String {
         switch self {
-        case .all: "Products to check"
-        case .lowSugar: "Low sugar products"
-        case .lowSodium: "Low sodium products"
-        case .highProtein: "High protein products"
-        case .shortIngredients: "Simple products"
-        case .vegetarian: "Vegetarian products"
-        case .vegan: "Vegan products"
-        case .glutenFree: "Gluten-free products"
-        case .lactoseFree: "Lactose-free products"
-        case .sensitiveDigestion: "Gentler products"
+        case .all: String(localized: "Products to check")
+        case .lowSugar: String(localized: "Low sugar products")
+        case .lowSodium: String(localized: "Low sodium products")
+        case .highProtein: String(localized: "High protein products")
+        case .shortIngredients: String(localized: "Simple products")
+        case .vegetarian: String(localized: "Vegetarian products")
+        case .vegan: String(localized: "Vegan products")
+        case .glutenFree: String(localized: "Gluten-free products")
+        case .lactoseFree: String(localized: "Lactose-free products")
+        case .sensitiveDigestion: String(localized: "Gentler products")
         }
     }
 
     var systemImage: String {
-        switch self {
-        case .all: "square.grid.2x2"
-        case .lowSugar: "cube.transparent"
-        case .lowSodium: "droplet"
-        case .highProtein: "bolt.heart"
-        case .shortIngredients: "list.bullet.rectangle"
-        case .vegetarian: "fork.knife.circle"
-        case .vegan: "leaf"
-        case .glutenFree: "checkmark.shield"
-        case .lactoseFree: "cup.and.saucer"
-        case .sensitiveDigestion: "feather"
-        }
-    }
-
-    /// A stronger filled glyph for preference rows. Goal filter chips keep
-    /// the quieter outline variant from `systemImage`.
-    var preferenceIcon: String {
         switch self {
         case .all: "square.grid.2x2.fill"
         case .lowSugar: "cube.transparent.fill"
@@ -76,19 +59,16 @@ nonisolated enum GroceryGoal: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Preference rows and goal chips share the same filled glyph family.
+    var preferenceIcon: String {
+        systemImage
+    }
+
     var productReason: String {
-        switch self {
-        case .all: "All"
-        case .lowSugar: "Low added sugar"
-        case .lowSodium: "Lower salt"
-        case .highProtein: "Good protein"
-        case .shortIngredients: "Short ingredients"
-        case .vegetarian: "Vegetarian"
-        case .vegan: "Vegan"
-        case .glutenFree: "Gluten-free"
-        case .lactoseFree: "Lactose-free"
-        case .sensitiveDigestion: "Gentler pick"
-        }
+        // Keep the compact card label aligned with the goal title shown in
+        // onboarding, Profile, and the filter chips. A goal tag should never
+        // silently switch vocabulary (for example, Low sodium -> Low salt).
+        title
     }
 
     var catalogSearchQuery: String {
@@ -103,6 +83,43 @@ nonisolated enum GroceryGoal: String, CaseIterable, Identifiable, Sendable {
         case .glutenFree: "gluten free"
         case .lactoseFree: "lactose free"
         case .sensitiveDigestion: "plain food"
+        }
+    }
+
+    /// Open Food Facts uses canonical taxonomy tags for explicit dietary
+    /// labels. Keep these separate from the human-readable fallback query: a
+    /// text search for "lactose free" is not evidence that a product actually
+    /// carries that dietary label.
+    var catalogLabelTag: String? {
+        switch self {
+        case .vegetarian:
+            "en:vegetarian"
+        case .vegan:
+            "en:vegan"
+        case .glutenFree:
+            "en:no-gluten"
+        case .lactoseFree:
+            "en:no-lactose"
+        case .all, .lowSugar, .lowSodium, .highProtein, .shortIngredients, .sensitiveDigestion:
+            nil
+        }
+    }
+
+    /// Nutrition goals use OFF's nutrient-level taxonomy to retrieve a broad,
+    /// structured candidate set. `matches(_:)` remains the final authority and
+    /// applies Pickly's exact thresholds to every returned product.
+    var catalogNutrientLevelTag: String? {
+        switch self {
+        case .lowSugar:
+            "en:sugars-in-low-quantity"
+        case .lowSodium:
+            "en:salt-in-low-quantity"
+        case .highProtein:
+            "en:proteins-in-high-quantity"
+        case .sensitiveDigestion:
+            "en:saturated-fat-in-low-quantity"
+        case .all, .shortIngredients, .vegetarian, .vegan, .glutenFree, .lactoseFree:
+            nil
         }
     }
 
@@ -180,6 +197,90 @@ nonisolated enum GroceryGoal: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Orders a goal-owned OFF feed by the strength of the selected goal and
+    /// then interleaves categories. This keeps Low sugar and Low sodium honest
+    /// when a product qualifies for both, while avoiding a Home shelf made of
+    /// four near-identical items from one category.
+    static func rankedFeedProducts(
+        in products: [Product],
+        for goal: GroceryGoal
+    ) -> [Product] {
+        var seenIDs = Set<String>()
+        let matching = products
+            .filter { goal.matches($0) }
+            .filter { seenIDs.insert($0.id).inserted }
+
+        let ranked = matching.enumerated().sorted { lhsEntry, rhsEntry in
+            let lhs = lhsEntry.element
+            let rhs = rhsEntry.element
+
+            switch goal {
+            case .lowSugar:
+                let lhsValue = lhs.sugarForScoring ?? .greatestFiniteMagnitude
+                let rhsValue = rhs.sugarForScoring ?? .greatestFiniteMagnitude
+                if lhsValue != rhsValue { return lhsValue < rhsValue }
+            case .lowSodium:
+                let lhsValue = lhs.nutrition.salt100g ?? .greatestFiniteMagnitude
+                let rhsValue = rhs.nutrition.salt100g ?? .greatestFiniteMagnitude
+                if lhsValue != rhsValue { return lhsValue < rhsValue }
+            case .highProtein:
+                let lhsValue = lhs.nutrition.proteins100g ?? 0
+                let rhsValue = rhs.nutrition.proteins100g ?? 0
+                if lhsValue != rhsValue { return lhsValue > rhsValue }
+            case .shortIngredients:
+                if lhs.ingredientCountForMatching != rhs.ingredientCountForMatching {
+                    return lhs.ingredientCountForMatching < rhs.ingredientCountForMatching
+                }
+            case .sensitiveDigestion:
+                if lhs.ingredientCountForMatching != rhs.ingredientCountForMatching {
+                    return lhs.ingredientCountForMatching < rhs.ingredientCountForMatching
+                }
+                let lhsValue = lhs.nutrition.saturatedFat100g ?? .greatestFiniteMagnitude
+                let rhsValue = rhs.nutrition.saturatedFat100g ?? .greatestFiniteMagnitude
+                if lhsValue != rhsValue { return lhsValue < rhsValue }
+            case .all, .vegetarian, .vegan, .glutenFree, .lactoseFree:
+                break
+            }
+
+            let lhsScore = lhs.score ?? -1
+            let rhsScore = rhs.score ?? -1
+            if lhsScore != rhsScore { return lhsScore > rhsScore }
+            return lhsEntry.offset < rhsEntry.offset
+        }.map(\.element)
+
+        return interleavingCategories(in: ranked)
+    }
+
+    private static func interleavingCategories(in products: [Product]) -> [Product] {
+        var bucketIndexes: [String: Int] = [:]
+        var buckets: [[Product]] = []
+
+        for product in products {
+            let categoryKey = product.category
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            if let index = bucketIndexes[categoryKey] {
+                buckets[index].append(product)
+            } else {
+                bucketIndexes[categoryKey] = buckets.count
+                buckets.append([product])
+            }
+        }
+
+        var result: [Product] = []
+        var itemIndex = 0
+        while result.count < products.count {
+            var appended = false
+            for bucket in buckets where itemIndex < bucket.count {
+                result.append(bucket[itemIndex])
+                appended = true
+            }
+            guard appended else { break }
+            itemIndex += 1
+        }
+        return result
+    }
+
     static func primaryMatch(
         for product: Product,
         filter: GroceryGoal,
@@ -189,27 +290,101 @@ nonisolated enum GroceryGoal: String, CaseIterable, Identifiable, Sendable {
             return filter
         }
 
-        return preferredGoals.first { $0.matches(product) }
+        let matchingGoals = preferredGoals.filter { $0 != .all && $0.matches(product) }
+        guard !matchingGoals.isEmpty else { return nil }
+
+        // `preferredGoals` is derived from the boolean preferences in a
+        // stable enum order (Low sugar happens to be first). Returning its
+        // first match made every `All` card say Low sugar even when the
+        // product was a materially stronger match for another selected goal.
+        // Use the verified product facts to choose the most meaningful tag;
+        // use onboarding/Profile order only as a deterministic tie-breaker.
+        return matchingGoals.max { lhs, rhs in
+            let lhsStrength = lhs.matchStrength(for: product)
+            let rhsStrength = rhs.matchStrength(for: product)
+
+            if abs(lhsStrength - rhsStrength) > 0.0001 {
+                return lhsStrength < rhsStrength
+            }
+
+            let lhsIndex = preferredGoals.firstIndex(of: lhs) ?? .max
+            let rhsIndex = preferredGoals.firstIndex(of: rhs) ?? .max
+            return lhsIndex > rhsIndex
+        }
+    }
+
+    /// Estimates how strongly a product satisfies a selected goal. This is
+    /// only used to choose the compact `All` card tag; it never changes the
+    /// actual boolean matching rules above or the product score.
+    private func matchStrength(for product: Product) -> Double {
+        switch self {
+        case .lowSugar:
+            guard let value = product.sugarForScoring else { return 0 }
+            return max(0, min(1, (5 - value) / 5))
+        case .lowSodium:
+            guard let value = product.nutrition.salt100g else { return 0 }
+            return max(0, min(1, (0.8 - value) / 0.8))
+        case .highProtein:
+            guard let value = product.nutrition.proteins100g else { return 0 }
+            return max(0, min(1, value / 20))
+        case .shortIngredients:
+            let count = product.ingredientCountForMatching
+            guard count > 0 else { return 0 }
+            return max(0, min(1, Double(5 - count) / 4))
+        case .sensitiveDigestion:
+            let ingredientCount = product.ingredientCountForMatching
+            let ingredientStrength = ingredientCount > 0
+                ? max(0, min(1, Double(5 - ingredientCount) / 4))
+                : 0
+            let sugarStrength = normalizedStrength(
+                product.sugarForScoring,
+                threshold: 5,
+                lowerIsBetter: true
+            )
+            let sodiumStrength = normalizedStrength(
+                product.nutrition.salt100g,
+                threshold: 0.8,
+                lowerIsBetter: true
+            )
+            let saturatedFatStrength = normalizedStrength(
+                product.nutrition.saturatedFat100g,
+                threshold: 3,
+                lowerIsBetter: true
+            )
+            return min(ingredientStrength, sugarStrength, sodiumStrength, saturatedFatStrength)
+        case .vegan:
+            return product.dietary.vegan == .confirmed ? 0.70 : 0
+        case .vegetarian:
+            return product.dietary.vegetarian == .confirmed ? 0.65 : 0
+        case .glutenFree:
+            return product.dietary.glutenFree == .confirmed ? 0.60 : 0
+        case .lactoseFree:
+            return product.dietary.lactoseFree == .confirmed ? 0.60 : 0
+        case .all:
+            return 0
+        }
+    }
+
+    private func normalizedStrength(
+        _ value: Double?,
+        threshold: Double,
+        lowerIsBetter: Bool
+    ) -> Double {
+        guard let value, value.isFinite else { return 0 }
+        let ratio = value / threshold
+        if lowerIsBetter {
+            return max(0, min(1, 1 - ratio))
+        }
+        return max(0, min(1, ratio))
     }
 
     func matches(_ product: Product) -> Bool {
-        guard self != .all else { return true }
-
-        if product.isLimitedData {
-            return false
-        }
-
         switch self {
         case .all:
             return true
-        case .lowSugar:
-            return (product.sugarForScoring ?? .greatestFiniteMagnitude) <= 5
-        case .lowSodium:
-            return (product.nutrition.salt100g ?? .greatestFiniteMagnitude) <= 0.8
-        case .highProtein:
-            return (product.nutrition.proteins100g ?? 0) >= 8
-        case .shortIngredients:
-            return !product.ingredients.isEmpty && product.ingredients.count <= 4
+        // Dietary labels are independent from the nutrition score. A product
+        // may be explicitly lactose-free (or vegan/gluten-free) while still
+        // lacking enough nutrition data for a health score.
         case .vegetarian:
             return product.dietary.vegetarian == .confirmed
         case .vegan:
@@ -218,9 +393,25 @@ nonisolated enum GroceryGoal: String, CaseIterable, Identifiable, Sendable {
             return product.dietary.glutenFree == .confirmed
         case .lactoseFree:
             return product.dietary.lactoseFree == .confirmed
+        case .lowSugar:
+            guard !product.isLimitedData else { return false }
+            return (product.sugarForScoring ?? .greatestFiniteMagnitude) <= 5
+        case .lowSodium:
+            guard !product.isLimitedData else { return false }
+            return (product.nutrition.salt100g ?? .greatestFiniteMagnitude) <= 0.8
+        case .highProtein:
+            guard !product.isLimitedData else { return false }
+            return (product.nutrition.proteins100g ?? 0) >= 8
+        case .shortIngredients:
+            guard !product.isLimitedData else { return false }
+            return product.ingredientCountForMatching > 0
+                && product.ingredientCountForMatching <= 4
         case .sensitiveDigestion:
-            return !product.ingredients.isEmpty
-                && product.ingredients.count <= 8
+            guard !product.isLimitedData else { return false }
+            return product.ingredientCountForMatching > 0
+                && product.ingredientCountForMatching <= 4
+                && (product.sugarForScoring ?? .greatestFiniteMagnitude) <= 5
+                && (product.nutrition.salt100g ?? .greatestFiniteMagnitude) <= 0.8
                 && (product.nutrition.saturatedFat100g ?? 0) <= 3
         }
     }

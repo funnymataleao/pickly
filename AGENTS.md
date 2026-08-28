@@ -457,6 +457,12 @@ Before implementing large features:
 - Focus on a working prototype first.
 - Avoid unrelated refactors.
 
+## Memora
+
+- Before a non-trivial task, query Memora using the project name and the relevant key components.
+- After a confirmed resolution, store only durable technical conclusions, decisions, and unresolved problems with the `project/<project-name>` tag.
+- Never store secrets, personal data, or `.env` contents.
+
 ## Definition Of Done
 
 A feature is complete only when:
@@ -474,3 +480,39 @@ A feature is complete only when:
 - Layout is localization-ready.
 - Privacy and App Review risks are considered.
 - Code is clean, modular, preview-friendly, and not over-engineered.
+
+## Disk Safety For Xcode And Codex
+
+Disk usage is a hard operational constraint. Before any `xcodebuild`, test,
+archive, Simulator, or UI-validation command:
+
+- Check available space on `/System/Volumes/Data` and inspect active
+  `xcodebuild` processes.
+- If less than 30 GiB is available, do not start another build. First stop and
+  clean inactive generated artifacts, then report the result.
+- Never run more than one `xcodebuild` for Pickly at a time.
+
+Derived-data rules:
+
+- Prefer Xcode's normal project DerivedData by omitting `-derivedDataPath`.
+- If isolation is required, reuse only this stable path:
+  `/Users/mataleao/Library/Developer/Xcode/DerivedData/Codex-Pickly`.
+- Never create task-specific paths in `/tmp` or `/private/tmp`, including names
+  containing `final`, `final2`, `fix`, `audit`, `test`, timestamps, or task names.
+- Never duplicate `SourcePackages` across temporary build directories.
+- Do not delete `Package.resolved`, source files, Git metadata, or an active
+  DerivedData directory.
+
+Temporary-artifact rules:
+
+- Use at most one replaceable `.xcarchive` and one replaceable `.xcresult` for
+  a task. Do not accumulate numbered copies.
+- Remove temporary build directories, archives, result bundles, screenshots,
+  and logs created by the task before the final response, including after a
+  failed command.
+- Before deleting generated artifacts, verify that no active process is using
+  the target and resolve the exact path. Never clean another active task.
+- Keep the latest verified Pickly build when the user asks to preserve the
+  current build; remove only older inactive generated builds.
+- In the final response, report the build paths retained or removed and the
+  available disk space after cleanup.

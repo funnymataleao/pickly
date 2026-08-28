@@ -1,12 +1,12 @@
-# Pickly Supabase Setup
+# Pickly Supabase Setup (legacy archive)
 
-This document describes the production Supabase backend used by Pickly. Local fixtures remain available only for previews and explicit Debug fallback scenarios.
+> This is a historical migration record, not the active production setup. The current iOS runtime uses Firebase Authentication and the Cloudflare Pickly API. Do not use the Supabase commands, endpoints, secrets, or deletion flow below for a new release.
 
 ## Current connection status
 
-Pickly is connected to Supabase project `bslsanvmkwjzbjerpzpi` in the `eu-west-1` region. The schema, RLS policies, private auth trigger, `apple_provider_tokens` table, `apple-token` and `delete-account` Edge Functions, 30 verified catalog products, and 17 curated product-alternative relations are deployed. The Apple Developer key is stored in Supabase Edge Function Secrets (`APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`); no `service_role` key is shipped to iOS. A real-device auth/deletion E2E check remains before release.
+The Supabase project described here was used during an earlier migration stage. It is not referenced by the active target, which authenticates through Firebase and sends account-linked requests to Cloudflare. A real-device auth/deletion E2E check remains before release.
 
-Release builds validate `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and all Google OAuth client identifiers before compilation. Supply these public runtime values through `Config/Local.xcconfig` for local archives or matching Xcode Cloud environment/build settings. The validation script never prints their values.
+Release builds now validate Firebase credentials, Google OAuth client identifiers, and the HTTPS Cloudflare API URL. See `Config/Local.xcconfig.example` and `Scripts/validate-release-config.sh`.
 
 ## 1. Project Setup
 

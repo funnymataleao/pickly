@@ -5,7 +5,6 @@ graphify-out/
 *.xcuserstate
 xcuserdata/
 
-# Local Supabase configuration must stay outside source control
-Docs/Supabase.local.xcconfig
+# Local Firebase/Cloudflare configuration must stay outside source control
 Config/Local.xcconfig
 supabase/.temp/

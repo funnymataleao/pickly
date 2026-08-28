@@ -1,5 +1,58 @@
 import SwiftUI
 
+struct UnlockedProductCarousel: View {
+    let products: [Product]
+    let reasonProvider: (Product) -> String
+    let isSaved: (Product) -> Bool
+    let onSelect: (Product) -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var carouselCount: Int {
+        dynamicTypeSize.isAccessibilitySize ? 1 : 5
+    }
+
+    private var carouselSpan: Int {
+        dynamicTypeSize.isAccessibilitySize ? 1 : 4
+    }
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            LazyHStack(alignment: .top, spacing: 12) {
+                ForEach(products) { product in
+                    Button {
+                        onSelect(product)
+                    } label: {
+                        ProductSliderCard(
+                            product: product,
+                            reason: reasonProvider(product),
+                            reasonIcon: "leaf.fill",
+                            isSaved: isSaved(product)
+                        )
+                    }
+                    .buttonStyle(PicklyPressableButtonStyle())
+                    .containerRelativeFrame(
+                        .horizontal,
+                        count: carouselCount,
+                        span: carouselSpan,
+                        spacing: 12
+                    )
+                    .accessibilityHint("Opens product details.")
+                }
+            }
+            .scrollTargetLayout()
+            .padding(.vertical, 6)
+        }
+        .scrollIndicators(.hidden)
+        .scrollTargetBehavior(.viewAligned)
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .contentMargins(.horizontal, PicklyLayout.screenHorizontalPadding, for: .scrollContent)
+        .contentMargins(.horizontal, 0, for: .scrollIndicators)
+        .padding(.horizontal, -PicklyLayout.screenHorizontalPadding)
+        .scrollClipDisabled(true)
+    }
+}
+
 struct LockedProductCarousel: View {
     let products: [Product]
     let reasonProvider: (Product) -> String
@@ -36,6 +89,10 @@ struct LockedProductCarousel: View {
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.viewAligned)
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .contentMargins(.horizontal, PicklyLayout.screenHorizontalPadding, for: .scrollContent)
+        .contentMargins(.horizontal, 0, for: .scrollIndicators)
+        .padding(.horizontal, -PicklyLayout.screenHorizontalPadding)
+        .scrollClipDisabled(true)
     }
 }
 

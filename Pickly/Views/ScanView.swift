@@ -10,9 +10,12 @@ struct ScanView: View {
     let isTabActive: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var isFrameBreathing = false
+    @State private var isScanLineTraveling = false
+    @State private var isScannerPresented = false
     @State private var isManualBarcodeEntryPresented = false
 
     init(
@@ -32,20 +35,16 @@ struct ScanView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            PicklyContentHeader(
-                title: "Scan barcode",
-                subtitle: "Point your camera at a product barcode"
-            )
-
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        Group {
+            if usesCameraCanvas {
+                scannerCanvas
+            } else {
+                standaloneContent
+            }
         }
-        .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
-        .padding(.top, PicklyLayout.rootTopPadding)
-        .padding(.bottom, 16)
-        .background(PicklyColor.background)
         .toolbar(.hidden, for: .navigationBar)
+        .toolbarBackground(usesCameraCanvas ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(PicklyColor.background), for: .tabBar)
+        .toolbarBackground(usesCameraCanvas ? .hidden : .visible, for: .tabBar)
         .task(id: isTabActive) {
             if isTabActive && scenePhase == .active {
                 viewModel.requestCameraAccess()
@@ -80,6 +79,31 @@ struct ScanView: View {
         .onChange(of: scenePhase) { _, newPhase in
             viewModel.setScannerVisible(isTabActive && newPhase == .active)
         }
+    }
+
+    private var usesCameraCanvas: Bool {
+        switch viewModel.state {
+        case .idle, .checkingPermission, .permissionDenied, .cameraUnavailable:
+            false
+        default:
+            true
+        }
+    }
+
+    private var standaloneContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            PicklyContentHeader(
+                title: "Scan barcode",
+                subtitle: "Point your camera at a product barcode"
+            )
+
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
+        .padding(.top, PicklyLayout.rootTopPadding)
+        .padding(.bottom, 16)
+        .background(PicklyColor.background)
     }
 
     @ViewBuilder
@@ -119,57 +143,100 @@ struct ScanView: View {
                 secondaryAction: viewModel.scanAgain
             )
         default:
-            scannerFlow
+            EmptyView()
         }
     }
 
-    private var scannerFlow: some View {
-        VStack(spacing: 14) {
-            scannerPreview
-                .layoutPriority(viewModel.state == .scanning ? 1 : 0)
+    private var scannerCanvas: some View {
+        GeometryReader { proxy in
+            let scanFrame = scannerFrame(in: proxy.size)
+            let canvasFrame = proxy.frame(in: .global)
+            let scanFrameInGlobalCoordinates = scanFrame.offsetBy(
+                dx: canvasFrame.minX,
+                dy: canvasFrame.minY
+            )
 
-            if viewModel.state == .scanning {
-                Spacer(minLength: 0)
+            ZStack {
+                scannerPreview
 
-                ManualBarcodeTextLink {
-                    isManualBarcodeEntryPresented = true
-                }
-                .padding(.bottom, 2)
-            } else {
-                statePanel
-                    .layoutPriority(1)
+                ScannerCameraBackdrop(
+                    scanFrameInGlobalCoordinates: scanFrameInGlobalCoordinates,
+                    reduceTransparency: reduceTransparency
+                )
+                .ignoresSafeArea(.container, edges: [.top, .bottom])
 
-                Spacer(minLength: 0)
+                ScannerTargetOverlay(
+                    scanFrame: scanFrame,
+                    isActive: viewModel.state == .scanning,
+                    isBreathing: isFrameBreathing && !reduceMotion,
+                    isScanLineTraveling: isScanLineTraveling && !reduceMotion,
+                    reduceTransparency: reduceTransparency
+                )
+                .scaleEffect(isScannerPresented ? 1 : 0.975)
+                .opacity(isScannerPresented ? 1 : 0)
+
+                cameraStatusOverlay
+                    .position(x: scanFrame.midX, y: scanFrame.midY)
+
+                scannerChrome
             }
+            .background(.black)
+        }
+        .background(.black)
+        .accessibilityLabel("Barcode scanner")
+        .onAppear {
+            startScannerAnimations()
+        }
+        .onChange(of: reduceMotion) { _, _ in
+            startScannerAnimations()
         }
     }
 
     private var scannerPreview: some View {
-        let scannerCornerRadius: CGFloat = 28
+        BarcodeScannerView(
+            onCodeScanned: viewModel.handleScannedBarcode,
+            onFailure: viewModel.handleScannerFailure,
+            isActive: isTabActive && scenePhase == .active && viewModel.state == .scanning
+        )
+        .id(viewModel.scannerToken)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea(.container, edges: [.top, .bottom])
+        .accessibilityHidden(true)
+    }
 
-        return ZStack {
-            BarcodeScannerView(
-                onCodeScanned: viewModel.handleScannedBarcode,
-                onFailure: viewModel.handleScannerFailure,
-                isActive: isTabActive && scenePhase == .active && viewModel.state == .scanning
-            )
-            .id(viewModel.scannerToken)
-            .clipShape(RoundedRectangle(cornerRadius: scannerCornerRadius, style: .continuous))
+    private var scannerChrome: some View {
+        VStack(spacing: 16) {
+            ScannerGlassHeader(reduceTransparency: reduceTransparency)
 
-            ScannerFrameOverlay(
-                isActive: viewModel.state == .scanning,
-                isBreathing: isFrameBreathing && !reduceMotion
-            )
+            Spacer(minLength: 0)
 
-            cameraStatusOverlay
+            if viewModel.state == .scanning {
+                ManualBarcodeGlassButton(
+                    reduceTransparency: reduceTransparency
+                ) {
+                    isManualBarcodeEntryPresented = true
+                }
+            } else {
+                statePanel
+                    .frame(maxHeight: 310)
+            }
         }
-        .frame(maxWidth: .infinity)
-        .aspectRatio(scannerAspectRatio, contentMode: .fit)
-        .background(.black, in: RoundedRectangle(cornerRadius: scannerCornerRadius, style: .continuous))
-        .accessibilityLabel("Barcode scanner")
-        .onAppear {
-            startFrameBreathing()
-        }
+        .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
+    }
+
+    private func scannerFrame(in size: CGSize) -> CGRect {
+        let horizontalMargin: CGFloat = 30
+        let width = min(max(size.width - (horizontalMargin * 2), 260), 356)
+        let height = min(max(width * 0.66, 188), 238)
+
+        return CGRect(
+            x: (size.width - width) / 2,
+            y: (size.height - height) / 2,
+            width: width,
+            height: height
+        )
     }
 
     @ViewBuilder
@@ -249,25 +316,26 @@ struct ScanView: View {
         }
     }
 
-    private var scannerAspectRatio: CGFloat {
-        switch viewModel.state {
-        case .unknownProduct, .unreadable, .failed, .multipleMatches:
-            1.52
-        default:
-            1
-        }
-    }
+    private func startScannerAnimations() {
+        isScannerPresented = false
+        isFrameBreathing = false
+        isScanLineTraveling = false
 
-    private func startFrameBreathing() {
         guard !reduceMotion else {
-            isFrameBreathing = false
+            isScannerPresented = true
             return
         }
 
-        isFrameBreathing = false
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.94)) {
+            isScannerPresented = true
+        }
 
-        withAnimation(.easeInOut(duration: 1.55).repeatForever(autoreverses: true)) {
+        withAnimation(.easeInOut(duration: 1.75).repeatForever(autoreverses: true)) {
             isFrameBreathing = true
+        }
+
+        withAnimation(.linear(duration: 2.15).repeatForever(autoreverses: true)) {
+            isScanLineTraveling = true
         }
     }
 
@@ -295,42 +363,265 @@ struct ScanView: View {
     }
 }
 
-private struct ScannerFrameOverlay: View {
-    let isActive: Bool
-    let isBreathing: Bool
+private struct ScannerCameraBackdrop: View {
+    let scanFrameInGlobalCoordinates: CGRect
+    let reduceTransparency: Bool
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(.white.opacity(isActive ? 0.92 : 0.56), lineWidth: 2)
-                .padding(24)
-                .scaleEffect(isBreathing ? 1.018 : 1)
-                .opacity(isBreathing ? 0.72 : 1)
-                .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
+        GeometryReader { proxy in
+            let backdropFrame = proxy.frame(in: .global)
+            let scanFrame = scanFrameInGlobalCoordinates.offsetBy(
+                dx: -backdropFrame.minX,
+                dy: -backdropFrame.minY
+            )
 
-            if isActive {
-                Capsule()
-                    .fill(.white.opacity(0.72))
-                    .frame(height: 2)
-                    .padding(.horizontal, 54)
-                    .offset(y: isBreathing ? 58 : -58)
-                    .shadow(color: PicklyColor.primary.opacity(0.32), radius: 10, x: 0, y: 0)
-
-                VStack {
-                    Spacer()
-
-                    Text("Align the barcode inside the frame")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.black.opacity(0.36), in: Capsule())
-                        .padding(.bottom, 26)
+            ZStack {
+                if reduceTransparency {
+                    ScannerCutoutShape(scanFrame: scanFrame)
+                        .fill(
+                            Color.black.opacity(0.74),
+                            style: FillStyle(eoFill: true)
+                        )
+                } else {
+                    ScannerCutoutShape(scanFrame: scanFrame)
+                        .fill(
+                            .ultraThinMaterial,
+                            style: FillStyle(eoFill: true)
+                        )
                 }
+
+                ScannerCutoutShape(scanFrame: scanFrame)
+                    .fill(
+                        Color.black.opacity(reduceTransparency ? 0.08 : 0.24),
+                        style: FillStyle(eoFill: true)
+                    )
+
+                LinearGradient(
+                    colors: [
+                        .black.opacity(0.5),
+                        .clear,
+                        .clear,
+                        .black.opacity(0.42)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             }
         }
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct ScannerCutoutShape: Shape {
+    let scanFrame: CGRect
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addRect(rect)
+        path.addRoundedRect(
+            in: scanFrame,
+            cornerSize: CGSize(width: 30, height: 30)
+        )
+        return path
+    }
+}
+
+private struct ScannerTargetOverlay: View {
+    let scanFrame: CGRect
+    let isActive: Bool
+    let isBreathing: Bool
+    let isScanLineTraveling: Bool
+    let reduceTransparency: Bool
+
+    var body: some View {
+        ZStack {
+            ZStack {
+                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                    .stroke(.white.opacity(isActive ? 0.26 : 0.16), lineWidth: 1)
+
+                ScannerCornerBrackets()
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white, .white.opacity(0.72)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        style: StrokeStyle(
+                            lineWidth: 4,
+                            lineCap: .round,
+                            lineJoin: .round
+                        )
+                    )
+                    .padding(1)
+                    .shadow(color: .black.opacity(0.28), radius: 10, x: 0, y: 5)
+                    .shadow(color: PicklyColor.primary.opacity(isActive ? 0.28 : 0), radius: 12)
+                    .scaleEffect(isBreathing ? 1.012 : 1)
+                    .opacity(isBreathing ? 0.82 : 1)
+
+                if isActive {
+                    GeometryReader { proxy in
+                        let travel = max((proxy.size.height - 54) / 2, 0)
+
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        .clear,
+                                        .white.opacity(0.78),
+                                        .white,
+                                        .white.opacity(0.78),
+                                        .clear
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(height: 2)
+                            .padding(.horizontal, 34)
+                            .offset(y: isScanLineTraveling ? travel : -travel)
+                            .shadow(color: PicklyColor.primary.opacity(0.48), radius: 10)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+            }
+            .frame(width: scanFrame.width, height: scanFrame.height)
+            .position(x: scanFrame.midX, y: scanFrame.midY)
+
+            if isActive {
+                Text("Align the barcode inside the frame")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background {
+                        Capsule()
+                            .fill(
+                                reduceTransparency
+                                    ? AnyShapeStyle(Color.black.opacity(0.82))
+                                    : AnyShapeStyle(.ultraThinMaterial)
+                            )
+                    }
+                    .overlay {
+                        Capsule()
+                            .stroke(.white.opacity(0.16), lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 8)
+                    .position(x: scanFrame.midX, y: scanFrame.maxY + 34)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct ScannerCornerBrackets: Shape {
+    func path(in rect: CGRect) -> Path {
+        let radius: CGFloat = min(28, min(rect.width, rect.height) * 0.14)
+        let arm: CGFloat = min(52, min(rect.width, rect.height) * 0.28)
+        var path = Path()
+
+        path.move(to: CGPoint(x: 0, y: arm))
+        path.addLine(to: CGPoint(x: 0, y: radius))
+        path.addQuadCurve(
+            to: CGPoint(x: radius, y: 0),
+            control: CGPoint(x: 0, y: 0)
+        )
+        path.addLine(to: CGPoint(x: arm, y: 0))
+
+        path.move(to: CGPoint(x: rect.maxX - arm, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX - radius, y: 0))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX, y: radius),
+            control: CGPoint(x: rect.maxX, y: 0)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: arm))
+
+        path.move(to: CGPoint(x: rect.maxX, y: rect.maxY - arm))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - radius))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX - radius, y: rect.maxY),
+            control: CGPoint(x: rect.maxX, y: rect.maxY)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX - arm, y: rect.maxY))
+
+        path.move(to: CGPoint(x: arm, y: rect.maxY))
+        path.addLine(to: CGPoint(x: radius, y: rect.maxY))
+        path.addQuadCurve(
+            to: CGPoint(x: 0, y: rect.maxY - radius),
+            control: CGPoint(x: 0, y: rect.maxY)
+        )
+        path.addLine(to: CGPoint(x: 0, y: rect.maxY - arm))
+
+        return path
+    }
+}
+
+private struct ScannerGlassHeader: View {
+    let reduceTransparency: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Scan barcode")
+                .font(.largeTitle.bold())
+                .tracking(-0.7)
+                .foregroundStyle(.white)
+
+            Text("Point your camera at a product barcode")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.76))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 17)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    reduceTransparency
+                        ? AnyShapeStyle(Color.black.opacity(0.82))
+                        : AnyShapeStyle(.ultraThinMaterial)
+                )
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(0.14), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ManualBarcodeGlassButton: View {
+    let reduceTransparency: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label("Enter barcode manually", picklyIcon: "keyboard", iconSize: 17)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 18)
+                .frame(minHeight: 50)
+                .frame(maxWidth: .infinity)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .background {
+            Capsule()
+                .fill(
+                    reduceTransparency
+                        ? AnyShapeStyle(Color.black.opacity(0.82))
+                        : AnyShapeStyle(.regularMaterial)
+                )
+        }
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(0.16), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 9)
+        .accessibilityHint("Opens manual barcode entry.")
     }
 }
 
@@ -389,24 +680,6 @@ private struct ScanCameraStatusOverlay: View {
             )
                 .foregroundStyle(PicklyColor.primary)
         }
-    }
-}
-
-private struct ManualBarcodeTextLink: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text("Enter barcode manually")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .underline()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
-        .accessibilityHint("Opens manual barcode entry.")
     }
 }
 
@@ -603,10 +876,10 @@ private struct MultipleProductsFoundPanel: View {
 
     private func accessibilityLabel(for product: Product) -> String {
         if !product.isLimitedData, let score = product.score {
-            return "\(product.name), \(product.brand), \(product.verdict), score \(score)"
+            return "\(product.name), \(product.brand), \(product.localizedVerdict), \(PicklyCopy.localized("score")) \(score)"
         }
 
-        return "\(product.name), \(product.brand), Limited data"
+        return PicklyCopy.format("%@, %@, %@", product.name, product.brand, PicklyCopy.localized("Limited data"))
     }
 }
 

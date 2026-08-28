@@ -11,13 +11,13 @@ struct SavedView: View {
 
     private var savedProducts: [Product] {
         savedStore.savedProducts.compactMap { savedProduct in
-            savedStore.product(id: savedProduct.productId) ?? productService.product(id: savedProduct.productId)
+            productService.product(id: savedProduct.productId) ?? savedStore.product(id: savedProduct.productId)
         }
     }
 
     private var recentProducts: [Product] {
         savedStore.recentProducts.compactMap { recentProduct in
-            savedStore.product(id: recentProduct.productId) ?? productService.product(id: recentProduct.productId)
+            productService.product(id: recentProduct.productId) ?? savedStore.product(id: recentProduct.productId)
         }
     }
 
@@ -32,7 +32,7 @@ struct SavedView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 12) {
+            LazyVStack(spacing: PicklyLayout.screenHorizontalPadding) {
                 Picker("Saved products list", selection: $selectedList) {
                     ForEach(SavedList.allCases) { list in
                         Text(list.title)
@@ -51,20 +51,16 @@ struct SavedView: View {
                     )
                     .padding(.top, 8)
                 } else {
-                    ForEach(visibleProducts) { product in
-                        ProductSummaryCard(
-                            product: product,
-                            reason: summaryReason(for: product),
-                            isSaved: savedStore.isSaved(product),
-                            onToggleSave: {
-                                savedStore.toggle(product)
-                            },
-                            accessibilityLabel: accessibilityLabel(for: product),
-                            onSelect: {
-                                selectedProduct = product
-                            }
-                        )
-                    }
+                    ProductSummaryList(
+                        products: visibleProducts,
+                        reasonProvider: summaryReason(for:),
+                        isSaved: savedStore.isSaved(_:),
+                        onToggleSave: savedStore.toggle(_:),
+                        accessibilityLabel: accessibilityLabel(for:),
+                        onSelect: { product in
+                            selectedProduct = product
+                        }
+                    )
                 }
             }
             .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
@@ -83,47 +79,42 @@ struct SavedView: View {
                 onScanAnotherProduct: onScanAnotherProduct
             )
         }
-        .navigationDestination(for: Product.self) { product in
-            ProductResultView(
-                product: product,
-                productService: productService,
-                savedStore: savedStore,
-                preferences: preferences,
-                onScanAnotherProduct: onScanAnotherProduct
-            )
-        }
     }
 
     private func accessibilityLabel(for product: Product) -> String {
         if !product.isLimitedData, let score = product.score {
-            return "\(product.name), \(product.brand), \(product.verdict), score \(score)"
+            return "\(product.name), \(product.brand), \(product.localizedVerdict), \(PicklyCopy.localized("score")) \(score)"
         }
 
-        return "\(product.name), \(product.brand), Limited data"
+        return PicklyCopy.format("%@, %@, %@", product.name, product.brand, PicklyCopy.localized("Limited data"))
     }
 
     private func summaryReason(for product: Product) -> String {
         if product.isLimitedData {
-            return "Limited data"
+            return PicklyCopy.localized("Limited data")
+        }
+
+        if let score = product.score, score < 70 {
+            return product.warnings.first ?? PicklyCopy.localized("Review what to watch")
         }
 
         if (product.sugarForScoring ?? .greatestFiniteMagnitude) <= 5 {
-            return product.sugarLabel == "added sugar" ? "Low added sugar" : "Low sugar"
+            return PicklyCopy.localized(product.sugarLabel == "added sugar" ? "Low added sugar" : "Low sugar")
         }
 
         if (product.nutrition.salt100g ?? .greatestFiniteMagnitude) <= 0.8 {
-            return "Lower salt"
+            return PicklyCopy.localized("Low salt")
         }
 
         if (product.nutrition.proteins100g ?? 0) >= 8 {
-            return "Good protein"
+            return PicklyCopy.localized("Good protein")
         }
 
         if !product.ingredients.isEmpty && product.ingredients.count <= 4 {
-            return "Short ingredients"
+            return PicklyCopy.localized("Short ingredients")
         }
 
-        return product.positives.first ?? product.verdict
+        return product.positives.first ?? product.localizedVerdict
     }
 }
 
@@ -171,27 +162,27 @@ private enum SavedList: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .saved:
-            return "Saved"
+            return PicklyCopy.localized("Saved")
         case .history:
-            return "History"
+            return PicklyCopy.localized("History")
         }
     }
 
     var emptyTitle: String {
         switch self {
         case .saved:
-            return "No saved products"
+            return PicklyCopy.localized("No saved products")
         case .history:
-            return "No recent products"
+            return PicklyCopy.localized("No recent products")
         }
     }
 
     var emptyDescription: String {
         switch self {
         case .saved:
-            return "Save a product from the result screen to see it here."
+            return PicklyCopy.localized("Save a product from the result screen to see it here.")
         case .history:
-            return "Open a product result to build your recent list."
+            return PicklyCopy.localized("Open a product result to build your recent list.")
         }
     }
 

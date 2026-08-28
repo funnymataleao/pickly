@@ -16,11 +16,11 @@ enum GoogleSignInProviderError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingConfiguration:
-            return "Google sign-in is not configured yet."
+            return PicklyCopy.localized("Google sign-in is not configured yet.")
         case .missingPresenter:
-            return "Google sign-in could not be presented. Please try again."
+            return PicklyCopy.localized("Google sign-in could not be presented. Please try again.")
         case .missingIDToken:
-            return "Google did not return a valid identity token."
+            return PicklyCopy.localized("Google did not return a valid identity token.")
         case .cancelled:
             return nil
         }
@@ -41,14 +41,14 @@ struct GoogleSignInProvider: GoogleSignInProviding {
     nonisolated private static let cancelledErrorCode = -5
 
     var isConfigured: Bool {
-        SupabaseCredentials.isGoogleConfigured
+        GoogleSignInConfiguration.isConfigured
     }
 
     func signIn(nonce: String) async throws -> GoogleIdentityTokens {
         guard
             isConfigured,
-            let iOSClientID = SupabaseCredentials.googleIOSClientID,
-            let serverClientID = SupabaseCredentials.googleServerClientID
+            let iOSClientID = GoogleSignInConfiguration.iosClientID,
+            let serverClientID = GoogleSignInConfiguration.serverClientID
         else {
             throw GoogleSignInProviderError.missingConfiguration
         }

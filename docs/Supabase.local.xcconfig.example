@@ -1,4 +1,6 @@
-// Copy to Config/Local.xcconfig. Base.xcconfig includes it automatically.
+// Legacy archive only. The active app uses Config/Local.xcconfig.example for
+// Firebase Authentication and the Cloudflare API. Do not use these Supabase
+// values for a release build.
 // Never commit real project values or any service_role key.
 // Release builds fail early when any required public runtime value is missing.
 

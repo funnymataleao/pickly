@@ -11,7 +11,7 @@ struct KeyInsights: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: "Why this score?", systemImage: "sparkle.magnifyingglass")
+            SectionTitle(title: PicklyCopy.localized("Why this score?"), systemImage: "sparkle.magnifyingglass")
 
             VStack(spacing: 10) {
                 ForEach(Array(insights.enumerated()), id: \.element.id) { index, insight in
@@ -108,20 +108,26 @@ struct WatchOutsSection: View {
     let warnings: [String]
 
     private var visibleWarnings: [String] {
-        Array(warnings.prefix(3))
+        Array(warnings.filter(Self.isConcreteConcern).prefix(3))
     }
 
     var body: some View {
         if !visibleWarnings.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
-                SectionTitle(title: "What to watch", systemImage: "eye")
+                SectionTitle(title: PicklyCopy.localized("Things to consider"), systemImage: "exclamationmark.circle")
 
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(visibleWarnings, id: \.self) { warning in
-                        Label(warning, picklyIcon: "circle", iconSize: 8)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(alignment: .top, spacing: 10) {
+                            PicklyIconImage(systemName: "exclamationmark.circle", size: 17)
+                                .foregroundStyle(PicklyColor.statusWarningAccent)
+                                .frame(width: 22, height: 22)
+
+                            Text(warning)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 .padding(16)
@@ -134,6 +140,19 @@ struct WatchOutsSection: View {
             }
         }
     }
+
+    nonisolated private static func isConcreteConcern(_ warning: String) -> Bool {
+        let normalized = warning.lowercased()
+        let dataQualityPhrases = [
+            "no major watch-outs",
+            "not available",
+            "incomplete",
+            "lowers confidence",
+            "confidence is lower"
+        ]
+
+        return !dataQualityPhrases.contains { normalized.contains($0) }
+    }
 }
 
 struct ForYouSection: View {
@@ -141,7 +160,7 @@ struct ForYouSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: "For you", systemImage: "person.crop.circle")
+            SectionTitle(title: PicklyCopy.localized("For you"), systemImage: "person.crop.circle")
 
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(notes, id: \.self) { note in
@@ -176,7 +195,7 @@ struct IngredientsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: "What's inside", systemImage: "list.bullet.rectangle")
+            SectionTitle(title: PicklyCopy.localized("What's inside"), systemImage: "list.bullet.rectangle")
 
             if ingredients.isEmpty {
                 Text("Ingredients not available yet.")
@@ -289,32 +308,22 @@ struct IngredientCard: View {
 }
 
 struct DataConfidenceCard: View {
-    let onScanAgain: () -> Void
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
                 PicklyIconImage(systemName: "info.circle", size: 21)
                     .foregroundStyle(PicklyColor.statusWarningAccent)
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Limited product data")
+                            Text("Some details are missing")
                         .font(.title3.weight(.bold))
 
-                    Text("We don't have enough nutrition or ingredient data to score this product confidently.")
+                            Text("Pickly can only assess the details available for this product. Try another item if you need a more complete comparison.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-
-            HStack(spacing: 10) {
-                Button("Scan again", action: onScanAgain)
-                    .buttonStyle(.borderedProminent)
-                    .tint(PicklyColor.primary)
-                    .picklyProminentButtonForeground()
-            }
-            .controlSize(.large)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -344,7 +353,7 @@ struct NutritionSummary: View {
                 }
             } label: {
                 HStack {
-                    SectionTitle(title: "Nutrition facts", systemImage: "chart.bar.doc.horizontal")
+                    SectionTitle(title: PicklyCopy.localized("Nutrition facts"), systemImage: "chart.bar.doc.horizontal")
                     Spacer()
                     PicklyIconImage(systemName: "chevron.down", size: 15)
                         .foregroundStyle(.secondary)
@@ -432,7 +441,7 @@ struct RecommendationsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: "Better choice next time", systemImage: "arrow.up.forward.circle")
+            SectionTitle(title: PicklyCopy.localized("What to look for"), systemImage: "arrow.up.forward.circle")
 
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(recommendations, id: \.self) { recommendation in
@@ -453,275 +462,1144 @@ struct RecommendationsCard: View {
     }
 }
 
-enum AlternativePreviewBuilder {
+nonisolated enum AlternativePreviewBuilder {
+    static func selection(
+        for currentProduct: Product,
+        alternatives: [Product],
+        catalog: [Product],
+        limit: Int = 100
+    ) -> AlternativeShelfSelection {
+        guard limit > 0 else {
+            return AlternativeShelfSelection(kind: .similar, products: [])
+        }
+
+        let rankedProducts = RelatedProductRanker.products(
+            for: currentProduct,
+            explicitAlternatives: alternatives,
+            catalog: catalog,
+            limit: max(limit, catalog.count + alternatives.count)
+        )
+        let comparableProducts = deduplicatedProducts(
+            rankedProducts.filter {
+                !$0.isLimitedData
+                    && !ProductIdentity.isSame($0, as: currentProduct)
+                    && ProductSimilarity.isComparable($0, to: currentProduct)
+            }
+        )
+        // Better Choices is a paid trust surface. A candidate can tie the
+        // current rating when its nutrition profile offers a useful trade-off,
+        // but a lower-rated product must never appear in this section.
+        let eligibleProducts = comparableProducts.filter {
+            isEligible($0, for: currentProduct)
+        }
+        let rankedBetterChoices = eligibleProducts.enumerated().sorted { lhs, rhs in
+            let lhsIsBetter = AlternativeBenefitBuilder.isBetter(lhs.element, than: currentProduct)
+            let rhsIsBetter = AlternativeBenefitBuilder.isBetter(rhs.element, than: currentProduct)
+            if lhsIsBetter != rhsIsBetter {
+                return lhsIsBetter
+            }
+
+            let lhsScore = lhs.element.score ?? Int.min
+            let rhsScore = rhs.element.score ?? Int.min
+            if lhsScore != rhsScore {
+                return lhsScore > rhsScore
+            }
+
+            return lhs.offset < rhs.offset
+        }.map(\.element)
+
+        return AlternativeShelfSelection(
+            kind: .similar,
+            products: Array(rankedBetterChoices.prefix(limit))
+        )
+    }
+
     static func products(
         for currentProduct: Product,
         alternatives: [Product],
         catalog: [Product],
-        limit: Int = 30
+        limit: Int = 100
     ) -> [Product] {
-        RelatedProductRanker.products(
+        guard limit > 0 else {
+            return []
+        }
+
+        let rankedProducts = RelatedProductRanker.products(
             for: currentProduct,
             explicitAlternatives: alternatives,
             catalog: catalog,
-            limit: limit
+            limit: max(limit, catalog.count + alternatives.count)
         )
+
+        let eligibleProducts = rankedProducts.filter {
+            !ProductIdentity.isSame($0, as: currentProduct)
+                && ProductSimilarity.isComparable($0, to: currentProduct)
+                && !$0.isLimitedData
+                && isEligible($0, for: currentProduct)
+        }
+
+        return Array(deduplicatedProducts(eligibleProducts).prefix(limit))
+    }
+
+    static func isEligible(_ candidate: Product, for currentProduct: Product) -> Bool {
+        guard let candidateScore = candidate.score,
+              let currentScore = currentProduct.score else {
+            return false
+        }
+
+        return candidateScore >= currentScore
+    }
+
+    private static func deduplicatedProducts(_ products: [Product]) -> [Product] {
+        var seen = Set<String>()
+        return products.filter { seen.insert(ProductIdentity.key(for: $0)).inserted }
+    }
+}
+
+nonisolated enum AlternativeShelfKind: Equatable, Sendable {
+    case similar
+}
+
+nonisolated struct AlternativeShelfSelection: Sendable {
+    let kind: AlternativeShelfKind
+    let products: [Product]
+}
+
+nonisolated enum AlternativeBenefitBuilder {
+    static func isBetter(_ candidate: Product, than current: Product) -> Bool {
+        guard !candidate.isLimitedData,
+              let candidateScore = candidate.score,
+              let currentScore = current.score else {
+            return false
+        }
+
+        // This helper marks a strict improvement for ordering and copy. Shelf
+        // eligibility is handled separately so equal-rated nutrition trade-offs
+        // can remain visible while lower-rated products stay excluded.
+        guard candidateScore >= max(currentScore, 50) else { return false }
+        return candidateScore > currentScore
+    }
+
+    static func reason(for candidate: Product, comparedTo current: Product) -> String {
+        if let comparativeReason = comparativeReason(for: candidate, comparedTo: current) {
+            return comparativeReason
+        }
+
+        if let candidateScore = candidate.score,
+           let currentScore = current.score,
+           candidateScore > currentScore {
+            return PicklyCopy.format("Pickly score +%@", String(candidateScore - currentScore))
+        }
+
+        return candidate.positives.first
+            ?? PicklyCopy.localized("Better choice")
+    }
+
+    private static func comparativeReason(for candidate: Product, comparedTo current: Product) -> String? {
+        if isMeaningfullyLower(candidate.sugarForScoring, than: current.sugarForScoring, minimumDifference: 0.4) {
+            return PicklyCopy.localized("Less sugar")
+        }
+        if isMeaningfullyLower(candidate.nutrition.salt100g, than: current.nutrition.salt100g, minimumDifference: 0.05) {
+            return PicklyCopy.localized("Lower sodium")
+        }
+        if isMeaningfullyLower(candidate.nutrition.saturatedFat100g, than: current.nutrition.saturatedFat100g, minimumDifference: 0.3) {
+            return PicklyCopy.localized("Less saturated fat")
+        }
+        if isMeaningfullyHigher(candidate.nutrition.proteins100g, than: current.nutrition.proteins100g, minimumDifference: 1) {
+            return PicklyCopy.localized("Higher protein")
+        }
+        if isMeaningfullyHigher(candidate.nutrition.fiber100g, than: current.nutrition.fiber100g, minimumDifference: 1) {
+            return PicklyCopy.localized("More fiber")
+        }
+        return nil
+    }
+
+    private static func isMeaningfullyLower(
+        _ candidate: Double?,
+        than current: Double?,
+        minimumDifference: Double
+    ) -> Bool {
+        guard let candidate, let current else { return false }
+        return current - candidate >= minimumDifference
+    }
+
+    private static func isMeaningfullyHigher(
+        _ candidate: Double?,
+        than current: Double?,
+        minimumDifference: Double
+    ) -> Bool {
+        guard let candidate, let current else { return false }
+        return candidate - current >= minimumDifference
     }
 }
 
 struct AlternativesResultSection: View {
     let product: Product
-    let alternatives: [Product]
-    let previewProducts: [Product]
+    let selection: AlternativeShelfSelection
+    let productService: any ProductService
     let savedStore: SavedProductsStore
+    let preferences: UserPreferences
+    let onScanAnotherProduct: (() -> Void)?
     let isPlus: Bool
+    let isLoading: Bool
+    let errorMessage: String?
+    let onRetry: () -> Void
     let onUpgrade: () -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var showComparison = false
-
-    private var isSampleProduct: Bool {
-        product.isSampleData
-    }
+    private let carouselPreviewLimit = 12
 
     private var availableAlternatives: [Product] {
-        previewProducts.isEmpty ? alternatives : previewProducts
+        selection.products.filter {
+            AlternativePreviewBuilder.isEligible($0, for: product)
+        }
     }
 
     private var lockedPreviewProducts: [Product] {
-        Array(availableAlternatives.prefix(30))
+        Array(availableAlternatives.prefix(carouselPreviewLimit))
+    }
+
+    private var contentState: PicklyPlusContentState {
+        PicklyPlusContentGate.state(
+            isPlus: isPlus,
+            hasContent: !availableAlternatives.isEmpty
+        )
     }
 
     private var carouselCount: Int { dynamicTypeSize.isAccessibilitySize ? 1 : 5 }
     private var carouselSpan: Int { dynamicTypeSize.isAccessibilitySize ? 1 : 4 }
 
+    @ViewBuilder
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: PicklyLayout.screenHorizontalPadding) {
             sectionHeader
 
-            if isPlus {
-                unlockedContent
+            if isLoading && availableAlternatives.isEmpty {
+                AlternativeCarouselSkeleton()
             } else {
-                lockedContent
+                switch contentState {
+                case .unavailable:
+                    unavailableContent
+                case .unlocked:
+                    unlockedContent
+                case .locked:
+                    lockedContent
+                }
             }
         }
-        .sheet(isPresented: $showComparison) {
-            AlternativeComparisonView(
-                product: product,
-                alternatives: availableAlternatives
-            )
-        }
+        // Give the section its own breathing room after the insight cards while
+        // keeping the header and its related carousel visually grouped.
+        .padding(.top, 12)
     }
 
     private var sectionHeader: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                SectionTitle(title: "Similar products", systemImage: "arrow.triangle.branch")
+                SectionTitle(title: sectionTitle, systemImage: "sparkles")
 
                 Spacer(minLength: 8)
 
-                if !isPlus {
-                    PicklyPlusBadge()
-                }
+                PicklyPlusBadge()
             }
 
-            Text(
-                isPlus
-                    ? "Similar products first, followed by the closest catalog matches."
-                    : "Related to this product. Swipe the preview and tap to unlock."
-            )
+            Text(sectionSubtitle)
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    @ViewBuilder
+    private var sectionSubtitle: String {
+        switch contentState {
+        case .unavailable:
+            if errorMessage != nil {
+                return PicklyCopy.localized("Better Choices couldn't be refreshed right now.")
+            }
+            return isLoading
+                ? PicklyCopy.localized("Finding verified products from the same category…")
+                : PicklyCopy.localized("Pickly Plus checks for verified products from the same category.")
+        case .locked:
+            return PicklyCopy.localized("Relevant products from the same category.")
+        case .unlocked:
+            return PicklyCopy.localized("Relevant products from the same category.")
+        }
+    }
+
+    private var sectionTitle: String {
+        PicklyCopy.localized("Better Choices")
+    }
+
+    private var unavailableContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                PicklyIconImage(systemName: "magnifyingglass", size: 18)
+                    .foregroundStyle(PicklyColor.primary)
+                    .frame(width: 36, height: 36)
+                    .background(PicklyColor.primary.opacity(0.12), in: Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(errorMessage == nil ? PicklyCopy.localized("No verified matches yet") : PicklyCopy.localized("Catalog unavailable"))
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    Text(unavailableMessage)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Button(action: onRetry) {
+                Label(PicklyCopy.localized("Try again"), picklyIcon: "arrow.clockwise", iconSize: 16)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(ResultSecondaryButtonStyle())
+            .accessibilityHint("Searches the catalog for higher-scoring products again.")
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .picklyCardSurface(
+            cornerRadius: 20,
+            fill: ResultSurface.card,
+            stroke: PicklyColor.primary.opacity(0.18)
+        )
+    }
+
+    private var unavailableMessage: String {
+        if let errorMessage {
+            return errorMessage
+        }
+        if isPlus {
+            return PicklyCopy.localized("We couldn't find another verified product in the same category. Your Plus access is active — try the catalog again.")
+        }
+
+        return PicklyCopy.localized("We couldn't find another verified product in the same category. Try the catalog again.")
+    }
+
     private var unlockedContent: some View {
-        if availableAlternatives.isEmpty {
-            Text(
-                isSampleProduct
-                    ? "No similar products are available in this sample set yet."
-                    : "No similar products are available yet."
-            )
-            .font(.body)
-            .foregroundStyle(.secondary)
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .picklyCardSurface(cornerRadius: 20, fill: ResultSurface.card)
-        } else {
-            VStack(alignment: .leading, spacing: 12) {
-                ScrollView(.horizontal) {
-                    LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(availableAlternatives.prefix(30)) { alternative in
-                            NavigationLink(value: alternative) {
-                                ProductSliderCard(
-                                    product: alternative,
-                                    reason: alternative.positives.first,
-                                    reasonIcon: "arrow.left.arrow.right",
-                                    isSaved: savedStore.isSaved(alternative)
-                                )
-                            }
-                            .buttonStyle(PicklyPressableButtonStyle())
-                            .containerRelativeFrame(
-                                .horizontal,
-                                count: carouselCount,
-                                span: carouselSpan,
-                                spacing: 12
+        VStack(alignment: .leading, spacing: PicklyLayout.screenHorizontalPadding) {
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    ForEach(availableAlternatives.prefix(carouselPreviewLimit)) { alternative in
+                        NavigationLink {
+                            ProductResultView(
+                                product: alternative,
+                                productService: productService,
+                                savedStore: savedStore,
+                                preferences: preferences,
+                                onScanAnotherProduct: onScanAnotherProduct
+                            )
+                        } label: {
+                            ProductSliderCard(
+                                product: alternative,
+                                reason: AlternativeBenefitBuilder.reason(
+                                    for: alternative,
+                                    comparedTo: product
+                                ),
+                                reasonIcon: "arrow.left.arrow.right",
+                                isSaved: savedStore.isSaved(alternative)
                             )
                         }
-                    }
-                    .scrollTargetLayout()
-                    .padding(.vertical, 8)
-                }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.viewAligned)
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-
-                if availableAlternatives.count > 1 {
-                    Button {
-                        showComparison = true
-                    } label: {
-                        HStack(spacing: 10) {
-                            PicklyIconImage(systemName: "rectangle.split.3x1", size: 16)
-
-                            Text("Compare up to 3 alternatives")
-                                .font(.body.weight(.semibold))
-
-                            Spacer(minLength: 8)
-
-                            PicklyIconImage(systemName: "chevron.right", size: 12)
-                                .foregroundStyle(.secondary)
-                        }
-                        .foregroundStyle(PicklyColor.primary)
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .picklyCardSurface(
-                            cornerRadius: 18,
-                            fill: PicklyColor.mint.opacity(0.7),
-                            stroke: PicklyColor.primary.opacity(0.18)
+                        .buttonStyle(PicklyPressableButtonStyle())
+                        .contentShape(Rectangle())
+                        .accessibilityHint("Opens this product.")
+                        .containerRelativeFrame(
+                            .horizontal,
+                            count: carouselCount,
+                            span: carouselSpan,
+                            spacing: 12
                         )
                     }
-                    .buttonStyle(PicklyPressableButtonStyle())
-                    .accessibilityHint("Opens a side-by-side comparison.")
                 }
+                .scrollTargetLayout()
+                .padding(.vertical, 8)
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .contentMargins(.horizontal, PicklyLayout.screenHorizontalPadding, for: .scrollContent)
+            .contentMargins(.horizontal, 0, for: .scrollIndicators)
+            .padding(.horizontal, -PicklyLayout.screenHorizontalPadding)
+            .scrollClipDisabled(true)
+
+            if availableAlternatives.count > 1 {
+                NavigationLink {
+                    SimilarProductsView(
+                        product: product,
+                        selection: selection,
+                        productService: productService,
+                        savedStore: savedStore,
+                        preferences: preferences,
+                        onScanAnotherProduct: onScanAnotherProduct
+                    )
+                } label: {
+                    HStack(spacing: 12) {
+                        PicklyIconImage(systemName: "list.bullet.rectangle", size: 18)
+                            .foregroundStyle(PicklyColor.primary)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(seeAllTitle)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.primary)
+
+                    Text("Ranked by score and nutrition")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        PicklyIconImage(systemName: "chevron.right", size: 12)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
+                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+                    .picklyCardSurface(
+                        cornerRadius: 18,
+                        fill: ResultSurface.card,
+                        stroke: PicklyColor.primary.opacity(0.18)
+                    )
+                }
+                .buttonStyle(PicklyPressableButtonStyle())
+                .accessibilityHint("Opens the ranked product list.")
             }
         }
     }
 
     private var lockedContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PicklyLayout.screenHorizontalPadding) {
             LockedProductCarousel(
                 products: lockedPreviewProducts,
                 reasonProvider: { product in
-                    product.positives.first ?? "Similar product"
+                    AlternativeBenefitBuilder.reason(
+                        for: product,
+                        comparedTo: self.product
+                    )
                 },
-                accessibilityItemName: "similar product",
+                accessibilityItemName: "better choice",
                 onUpgrade: onUpgrade
             )
 
             Button(action: onUpgrade) {
-                Label("Reveal similar products", picklyIcon: "lock.shield.fill", iconSize: 18)
+                Label(
+                    unlockTitle,
+                    picklyIcon: "lock.shield.fill",
+                    iconSize: 18
+                )
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(ResultPrimaryButtonStyle(tint: PicklyColor.primary))
             .accessibilityHint("Opens Pickly Plus subscription options.")
         }
     }
+
+    private var seeAllTitle: String {
+        PicklyCopy.format("See all %@ Better Choices", String(availableAlternatives.count))
+    }
+
+    private var unlockTitle: String {
+        PicklyCopy.format("Unlock %@ Better Choices", String(availableAlternatives.count))
+    }
 }
 
-private struct AlternativeComparisonView: View {
-    let product: Product
-    let alternatives: [Product]
-
-    @Environment(\.dismiss) private var dismiss
-
+private struct AlternativeCarouselSkeleton: View {
     var body: some View {
-        NavigationStack {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    ComparisonProductColumn(product: product, isCurrent: true)
+        ScrollView(.horizontal) {
+            HStack(spacing: 12) {
+                ForEach(0..<2, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 12) {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(.secondary.opacity(0.12))
+                            .frame(height: 144)
 
-                    ForEach(alternatives.prefix(3)) { alternative in
-                        ComparisonProductColumn(product: alternative, isCurrent: false)
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(.secondary.opacity(0.12))
+                            .frame(width: 160, height: 16)
+
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(.secondary.opacity(0.08))
+                            .frame(width: 110, height: 13)
                     }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 20)
-            }
-            .background(PicklyColor.background)
-            .navigationTitle("Compare products")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
+                    .padding(10)
+                    .containerRelativeFrame(.horizontal, count: 5, span: 4, spacing: 12)
+                    .picklyCardSurface(cornerRadius: 20, fill: ResultSurface.card)
                 }
             }
         }
+        .scrollIndicators(.hidden)
+        .contentMargins(.horizontal, PicklyLayout.screenHorizontalPadding, for: .scrollContent)
+        .contentMargins(.horizontal, 0, for: .scrollIndicators)
+        .padding(.horizontal, -PicklyLayout.screenHorizontalPadding)
+        .scrollClipDisabled(true)
+        .accessibilityLabel("Finding Better Choices")
     }
 }
 
-private struct ComparisonProductColumn: View {
+struct SimilarProductsView: View {
     let product: Product
-    let isCurrent: Bool
+    let selection: AlternativeShelfSelection
+    let productService: any ProductService
+    let savedStore: SavedProductsStore
+    let preferences: UserPreferences
+    let onScanAnotherProduct: (() -> Void)?
 
-    private var scoreText: String {
-        product.score.map(String.init) ?? "—"
+    private var title: String {
+        "Better Choices"
+    }
+
+    private var displayedProducts: [Product] {
+        return selection.products
+            .filter { AlternativePreviewBuilder.isEligible($0, for: product) }
+            .enumerated()
+            .sorted { lhs, rhs in
+                let leftScore = lhs.element.score ?? Int.min
+                let rightScore = rhs.element.score ?? Int.min
+                return leftScore == rightScore ? lhs.offset < rhs.offset : leftScore > rightScore
+            }
+            .map(\.element)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ProductThumbnailView(product: product, size: 82)
+        List {
+            Section("Compared with") {
+                ComparisonReferenceRow(product: product)
+                    .listRowBackground(ResultSurface.card)
+            }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(isCurrent ? "Current product" : "Alternative")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isCurrent ? .secondary : PicklyColor.primary)
+            Section("Best matches") {
+                ForEach(displayedProducts) { alternative in
+                    NavigationLink {
+                        ProductComparisonView(
+                            currentProduct: product,
+                            alternative: alternative,
+                            productService: productService,
+                            savedStore: savedStore,
+                            preferences: preferences,
+                            onScanAnotherProduct: onScanAnotherProduct
+                        )
+                    } label: {
+                        BetterChoiceListRow(
+                            product: alternative,
+                            reason: AlternativeBenefitBuilder.reason(
+                                for: alternative,
+                                comparedTo: product
+                            ),
+                            isSaved: savedStore.isSaved(alternative)
+                        )
+                    }
+                    .listRowBackground(ResultSurface.card)
+                    .accessibilityHint("Compares this product with the current product.")
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(PicklyColor.background)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
 
+private struct ComparisonReferenceRow: View {
+    let product: Product
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ProductThumbnailView(product: product, size: 60, cornerRadius: 14)
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text(product.name)
-                    .font(.title3.weight(.semibold))
+                    .font(.headline)
                     .foregroundStyle(.primary)
-                    .lineLimit(3)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
 
                 Text(product.brand)
-                    .font(.body)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
-            ComparisonMetricRow(title: "Score", value: scoreText)
-            ComparisonMetricRow(title: product.sugarLabel.capitalized, value: format(product.sugarForScoring, suffix: "g"))
-            ComparisonMetricRow(title: "Salt", value: format(product.nutrition.salt100g, suffix: "g"))
-            ComparisonMetricRow(title: "Sat. fat", value: format(product.nutrition.saturatedFat100g, suffix: "g"))
-            ComparisonMetricRow(title: "Protein", value: format(product.nutrition.proteins100g, suffix: "g"))
-            ComparisonMetricRow(title: "Fiber", value: format(product.nutrition.fiber100g, suffix: "g"))
+            Spacer(minLength: 8)
+
+            HStack(spacing: 10) {
+                ScorePill(product: product)
+
+                PicklyIconImage(systemName: "chevron.right", size: 12)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            PicklyCopy.format(
+                "Current product, %@, %@, %@",
+                product.name,
+                product.brand,
+                product.localizedVerdict
+            )
+        )
+    }
+}
+
+private struct BetterChoiceListRow: View {
+    let product: Product
+    let reason: String
+    let isSaved: Bool
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ProductThumbnailView(product: product, size: 60, cornerRadius: 14)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(product.name)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(product.brand)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    PicklyIconImage(systemName: "arrow.left.arrow.right", size: 14)
+
+                    Text(ProductCardCopy.shortReason(reason))
+                        .font(.footnote.weight(.semibold))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(PicklyColor.primary)
+                .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 8) {
+                if isSaved {
+                    PicklyIconImage(systemName: "bookmark.fill", size: 12)
+                        .foregroundStyle(.secondary)
+                }
+
+                ScorePill(product: product)
+            }
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        var parts = [product.name, product.brand, product.localizedVerdict, reason]
+        if let score = product.score {
+            parts.append(PicklyCopy.format("Score %@ out of 100", String(score)))
+        }
+        if isSaved {
+            parts.append(PicklyCopy.localized("Saved"))
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
+private struct ProductComparisonView: View {
+    let currentProduct: Product
+    let alternative: Product
+    let productService: any ProductService
+    let savedStore: SavedProductsStore
+    let preferences: UserPreferences
+    let onScanAnotherProduct: (() -> Void)?
+
+    @State private var showsUnchangedMetrics = false
+
+    private var metrics: [ComparisonMetric] {
+        ComparisonMetric.metrics(current: currentProduct, alternative: alternative)
+    }
+
+    private var differingMetrics: [ComparisonMetric] {
+        metrics.filter { !$0.isUnchanged }
+    }
+
+    private var unchangedMetrics: [ComparisonMetric] {
+        metrics.filter(\.isUnchanged)
+    }
+
+    private var visibleMetrics: [ComparisonMetric] {
+        if differingMetrics.isEmpty || showsUnchangedMetrics {
+            return metrics
+        }
+        return differingMetrics
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: PicklyLayout.screenHorizontalPadding) {
+                ComparisonProductHeader(
+                    product: currentProduct,
+                    label: PicklyCopy.localized("Current product"),
+                    isSelected: false
+                )
+
+                ComparisonProductHeader(
+                    product: alternative,
+                    label: AlternativeBenefitBuilder.reason(for: alternative, comparedTo: currentProduct),
+                    isSelected: true
+                )
+
+                ComparisonSummaryCard(metrics: metrics)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(differingMetrics.isEmpty ? PicklyCopy.localized("Nutrition comparison") : PicklyCopy.localized("Key differences"))
+                            .font(.title3.weight(.semibold))
+
+                        Spacer(minLength: 8)
+
+                        Text("per 100 g")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ComparisonMetricTable(metrics: visibleMetrics)
+
+                    if !unchangedMetrics.isEmpty, !differingMetrics.isEmpty {
+                        Button {
+                            withAnimation(.snappy(duration: 0.2)) {
+                                showsUnchangedMetrics.toggle()
+                            }
+                        } label: {
+                            Label(
+                                showsUnchangedMetrics
+                                    ? PicklyCopy.localized("Hide unchanged values")
+                                    : PicklyCopy.format("Show %@ unchanged values", String(unchangedMetrics.count)),
+                                picklyIcon: showsUnchangedMetrics ? "chevron.up" : "chevron.down",
+                                iconSize: 12
+                            )
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(PicklyColor.primary)
+                        .accessibilityHint("Shows or hides nutrition values that match.")
+                    }
+                }
+                .padding(16)
+                .picklyCardSurface(
+                    cornerRadius: 22,
+                    fill: ResultSurface.card,
+                    stroke: PicklyColor.stroke.opacity(0.45)
+                )
+
+                NavigationLink {
+                    ProductResultView(
+                        product: alternative,
+                        productService: productService,
+                        savedStore: savedStore,
+                        preferences: preferences,
+                        onScanAnotherProduct: onScanAnotherProduct
+                    )
+                } label: {
+                    Label(PicklyCopy.localized("View product"), picklyIcon: "arrow.right", iconSize: 16)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ResultPrimaryButtonStyle(tint: PicklyColor.primary))
+                .accessibilityHint("Opens the selected product details.")
+            }
+            .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
+        }
+        .scrollIndicators(.hidden)
+        .background(PicklyColor.background)
+        .navigationTitle(PicklyCopy.localized("Compare"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct ComparisonProductHeader: View {
+    let product: Product
+    let label: String
+    let isSelected: Bool
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ProductThumbnailView(product: product, size: 68, cornerRadius: 17)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isSelected ? PicklyColor.primary : .secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+
+                Text(product.name)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(product.brand)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            }
+
+            Spacer(minLength: 8)
+
+            ScorePill(product: product)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .picklyCardSurface(
+            cornerRadius: 20,
+            fill: ResultSurface.card,
+            stroke: isSelected ? PicklyColor.primary.opacity(0.22) : PicklyColor.stroke.opacity(0.45)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            PicklyCopy.format(
+                "%@: %@, %@, %@",
+                label,
+                product.name,
+                product.brand,
+                product.localizedVerdict
+            )
+        )
+    }
+}
+
+private struct ComparisonSummaryCard: View {
+    let metrics: [ComparisonMetric]
+
+    private var improvement: ComparisonMetric? {
+        metrics.first { $0.change == .better }
+    }
+
+    private var tradeoff: ComparisonMetric? {
+        metrics.first { $0.change == .worse }
+    }
+
+    private var title: String {
+        improvement?.summaryText ?? PicklyCopy.localized("Similar overall profile")
+    }
+
+    private var subtitle: String {
+        if let tradeoff {
+            return PicklyCopy.format(
+                "Trade-off: %@.",
+                tradeoff.summaryText.lowercased()
+            )
+        }
+        if improvement != nil {
+            return PicklyCopy.localized("No major trade-off is visible in the available values.")
+        }
+        return PicklyCopy.localized("The available values do not show a clear overall advantage.")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, picklyIcon: "arrow.left.arrow.right", iconSize: 18)
+                .font(.headline)
+                .foregroundStyle(.primary)
+
+            Text(subtitle)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
-        .frame(width: 220, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .picklyCardSurface(
-            cornerRadius: 22,
-            fill: isCurrent ? PicklyColor.card : PicklyColor.mint.opacity(0.74),
-            stroke: isCurrent ? PicklyColor.stroke : PicklyColor.primary.opacity(0.2)
+            cornerRadius: 20,
+            fill: PicklyColor.primary.opacity(0.08),
+            stroke: PicklyColor.primary.opacity(0.18)
         )
-        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ComparisonMetric: Identifiable {
+    enum Preference: Equatable {
+        case higher
+        case lower
+    }
+
+    enum Change: Equatable {
+        case better
+        case worse
+        case same
+        case unavailable
+    }
+
+    let title: String
+    let currentValue: Double?
+    let alternativeValue: Double?
+    let unit: String
+    let precision: Int
+    let preference: Preference
+    let isDirectlyComparable: Bool
+    let equalityTolerance: Double
+
+    var id: String { title }
+
+    var change: Change {
+        if currentValue == nil, alternativeValue == nil {
+            return .same
+        }
+        guard isDirectlyComparable, let difference else { return .unavailable }
+        guard abs(difference) > equalityTolerance else { return .same }
+
+        switch preference {
+        case .higher:
+            return difference > 0 ? .better : .worse
+        case .lower:
+            return difference < 0 ? .better : .worse
+        }
+    }
+
+    var isUnchanged: Bool {
+        change == .same
+    }
+
+    var currentText: String {
+        formatted(currentValue)
+    }
+
+    var alternativeText: String {
+        formatted(alternativeValue)
+    }
+
+    var changeText: String {
+        guard isDirectlyComparable else { return PicklyCopy.localized("Different data basis") }
+        guard let difference else { return PicklyCopy.localized("Not available") }
+        guard abs(difference) > equalityTolerance else { return PicklyCopy.localized("Same") }
+
+        let magnitude = formatted(abs(difference))
+        return difference > 0
+            ? PicklyCopy.format("%@ higher", magnitude)
+            : PicklyCopy.format("%@ lower", magnitude)
+    }
+
+    var summaryText: String {
+        guard let difference, abs(difference) > equalityTolerance else {
+            return PicklyCopy.format("Similar %@", PicklyCopy.localized(title))
+        }
+
+        if title == "Pickly score" {
+            let points = Int(abs(difference).rounded())
+            let unit = PicklyCopy.localized(points == 1 ? "point" : "points")
+            return difference > 0
+                ? PicklyCopy.format("Pickly score is %@ %@ higher", String(points), unit)
+                : PicklyCopy.format("Pickly score is %@ %@ lower", String(points), unit)
+        }
+
+        let magnitude = formatted(abs(difference))
+        return difference > 0
+            ? PicklyCopy.format("%@ is %@ higher", PicklyCopy.localized(title), magnitude)
+            : PicklyCopy.format("%@ is %@ lower", PicklyCopy.localized(title), magnitude)
+    }
+
+    var symbolName: String {
+        switch change {
+        case .better:
+            return preference == .higher ? "arrow.up.right" : "arrow.down.right"
+        case .worse:
+            return preference == .higher ? "arrow.down.right" : "arrow.up.right"
+        case .same:
+            return "equal"
+        case .unavailable:
+            return "questionmark.circle"
+        }
+    }
+
+    var changeColor: Color {
+        switch change {
+        case .better:
+            return PicklyColor.primary
+        case .worse:
+            return PicklyColor.statusWarningAccent
+        case .same, .unavailable:
+            return .secondary
+        }
+    }
+
+    private var difference: Double? {
+        guard let currentValue, let alternativeValue else { return nil }
+        return alternativeValue - currentValue
+    }
+
+    private func formatted(_ value: Double?) -> String {
+        guard let value else { return "—" }
+        let number = value.formatted(.number.precision(.fractionLength(precision)))
+        return unit.isEmpty ? number : "\(number) \(unit)"
+    }
+
+    static func metrics(current: Product, alternative: Product) -> [ComparisonMetric] {
+        let sugarIsComparable = current.sugarLabel == alternative.sugarLabel
+        let sugarTitle = sugarIsComparable && current.sugarLabel == "added sugar"
+            ? "Added sugar"
+            : "Sugar"
+
+        return [
+            ComparisonMetric(
+                title: "Pickly score",
+                currentValue: current.score.map(Double.init),
+                alternativeValue: alternative.score.map(Double.init),
+                unit: "",
+                precision: 0,
+                preference: .higher,
+                isDirectlyComparable: true,
+                equalityTolerance: 0
+            ),
+            ComparisonMetric(
+                title: sugarTitle,
+                currentValue: current.sugarForScoring,
+                alternativeValue: alternative.sugarForScoring,
+                unit: "g",
+                precision: 1,
+                preference: .lower,
+                isDirectlyComparable: sugarIsComparable,
+                equalityTolerance: 0.05
+            ),
+            ComparisonMetric(
+                title: "Salt",
+                currentValue: current.nutrition.salt100g,
+                alternativeValue: alternative.nutrition.salt100g,
+                unit: "g",
+                precision: 1,
+                preference: .lower,
+                isDirectlyComparable: true,
+                equalityTolerance: 0.05
+            ),
+            ComparisonMetric(
+                title: "Saturated fat",
+                currentValue: current.nutrition.saturatedFat100g,
+                alternativeValue: alternative.nutrition.saturatedFat100g,
+                unit: "g",
+                precision: 1,
+                preference: .lower,
+                isDirectlyComparable: true,
+                equalityTolerance: 0.05
+            ),
+            ComparisonMetric(
+                title: "Protein",
+                currentValue: current.nutrition.proteins100g,
+                alternativeValue: alternative.nutrition.proteins100g,
+                unit: "g",
+                precision: 1,
+                preference: .higher,
+                isDirectlyComparable: true,
+                equalityTolerance: 0.05
+            ),
+            ComparisonMetric(
+                title: "Fiber",
+                currentValue: current.nutrition.fiber100g,
+                alternativeValue: alternative.nutrition.fiber100g,
+                unit: "g",
+                precision: 1,
+                preference: .higher,
+                isDirectlyComparable: true,
+                equalityTolerance: 0.05
+            )
+        ]
+    }
+}
+
+private struct ComparisonMetricTable: View {
+    let metrics: [ComparisonMetric]
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if !dynamicTypeSize.isAccessibilitySize {
+                HStack(spacing: 12) {
+                    Text("Metric")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Current")
+                        .frame(width: 68, alignment: .trailing)
+                    Text("Selected")
+                        .frame(width: 72, alignment: .trailing)
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 6)
+            }
+
+            ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
+                ComparisonMetricPairRow(metric: metric)
+
+                if index < metrics.count - 1 {
+                    Divider()
+                }
+            }
+        }
+    }
+}
+
+private struct ComparisonMetricPairRow: View {
+    let metric: ComparisonMetric
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(PicklyCopy.localized(metric.title))
+                        .font(.body.weight(.semibold))
+
+                    LabeledContent(PicklyCopy.localized("Current"), value: metric.currentText)
+                    LabeledContent(PicklyCopy.localized("Selected"), value: metric.alternativeText)
+
+                    changeLabel
+                }
+                .font(.body)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(PicklyCopy.localized(metric.title))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Text(metric.currentText)
+                            .frame(width: 68, alignment: .trailing)
+
+                        Text(metric.alternativeText)
+                            .frame(width: 72, alignment: .trailing)
+                    }
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+
+                    changeLabel
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(isCurrent ? "Current product" : "Alternative"): \(product.name), score \(scoreText), "
-                + "\(product.sugarLabel) \(format(product.sugarForScoring, suffix: "g")), "
-                + "salt \(format(product.nutrition.salt100g, suffix: "g")), "
-                + "saturated fat \(format(product.nutrition.saturatedFat100g, suffix: "g")), "
-                + "protein \(format(product.nutrition.proteins100g, suffix: "g")), "
-                + "fiber \(format(product.nutrition.fiber100g, suffix: "g"))"
+            PicklyCopy.format(
+                "%@, current %@, selected %@, %@",
+                PicklyCopy.localized(metric.title),
+                metric.currentText,
+                metric.alternativeText,
+                metric.changeText
+            )
         )
     }
 
-    private func format(_ value: Double?, suffix: String) -> String {
-        guard let value else {
-            return "—"
-        }
-
-        return "\(value.formatted(.number.precision(.fractionLength(1))))\(suffix)"
+    private var changeLabel: some View {
+        Label(metric.changeText, picklyIcon: metric.symbolName, iconSize: 11)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(metric.changeColor)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -736,26 +1614,6 @@ private extension ForYouSection {
         return isWarning
             ? ("exclamationmark.circle", PicklyColor.statusWarningAccent)
             : ("checkmark.circle", .primary)
-    }
-}
-
-private struct ComparisonMetricRow: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer(minLength: 4)
-
-            Text(value)
-                .font(.subheadline.weight(.semibold).monospacedDigit())
-                .foregroundStyle(.primary)
-        }
-        .padding(.vertical, 2)
     }
 }
 
@@ -775,8 +1633,14 @@ struct ProductSliderCard: View {
                 isLocked: false
             )
             .overlay(alignment: .topTrailing) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    ScorePill(product: product)
+                        .padding(10)
+                }
+            }
+
+            if dynamicTypeSize.isAccessibilitySize {
                 ScorePill(product: product)
-                    .padding(10)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -793,7 +1657,11 @@ struct ProductSliderCard: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let reason {
-                    Label(reason, picklyIcon: reasonIcon, iconSize: 13)
+                    Label(
+                        ProductCardCopy.shortReason(reason),
+                        picklyIcon: ProductCardCopy.icon(for: reason, fallback: reasonIcon),
+                        iconSize: 13
+                    )
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(PicklyColor.primary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
@@ -819,15 +1687,15 @@ struct ProductSliderCard: View {
     }
 
     private var accessibilitySummary: String {
-        var parts = [product.name, product.brand, product.verdict]
+        var parts = [product.name, product.brand, product.localizedVerdict]
         if let score = product.score {
-            parts.append("Score \(score) out of 100")
+            parts.append(PicklyCopy.format("Score %@ out of 100", String(score)))
         }
         if let reason {
-            parts.append(reason)
+            parts.append(ProductCardCopy.shortReason(reason))
         }
         if isSaved {
-            parts.append("Saved")
+            parts.append(PicklyCopy.localized("Saved"))
         }
         return parts.joined(separator: ", ")
     }
@@ -876,7 +1744,7 @@ struct ResultActions: View {
     let onSave: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: PicklyLayout.screenHorizontalPadding) {
             Button(action: onScanAnotherProduct) {
                 Label("Scan another product", picklyIcon: "barcode.viewfinder", iconSize: 18)
                     .frame(maxWidth: .infinity)
@@ -892,7 +1760,7 @@ struct ResultActions: View {
         Button(action: onSave) {
             Label(
                 isSaved ? "Saved" : "Save result",
-                picklyIcon: isSaved ? "bookmark.fill" : "bookmark",
+                picklyIcon: isSaved ? "bookmark.fill" : "bookmark.outline",
                 iconSize: 18
             )
                 .frame(maxWidth: .infinity)
@@ -944,7 +1812,7 @@ struct StickyResultHeader: View {
 
             Button(action: onSave) {
                 PicklyIconImage(
-                    systemName: isSaved ? "bookmark.fill" : "bookmark",
+                    systemName: isSaved ? "bookmark.fill" : "bookmark.outline",
                     size: 20
                 )
                     .foregroundStyle(isSaved ? PicklyColor.primary : .primary)
@@ -975,12 +1843,13 @@ struct SectionTitle: View {
 
 struct ResultPrimaryButtonStyle: ButtonStyle {
     let tint: Color
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline.weight(.semibold))
-            .foregroundStyle(PicklyColor.onBrandAccent)
+            .foregroundStyle(PicklyColor.onPrimary(for: colorScheme))
             .lineLimit(1)
             .minimumScaleFactor(0.86)
             .padding(.horizontal, ResultActionButtonMetrics.horizontalPadding)

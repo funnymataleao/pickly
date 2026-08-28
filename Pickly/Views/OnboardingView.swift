@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 #if canImport(UIKit)
 import UIKit
@@ -25,6 +26,14 @@ struct OnboardingView: View {
         self.onComplete = onComplete
         _preferences = preferences
         self.authStore = authStore
+
+#if DEBUG
+        if let argumentIndex = ProcessInfo.processInfo.arguments.firstIndex(of: "-pickly-onboarding-page"),
+           let rawPage = ProcessInfo.processInfo.arguments.dropFirst(argumentIndex + 1).first,
+           let page = Int(rawPage) {
+            _selectedPage = State(initialValue: min(max(page, 0), 3))
+        }
+#endif
     }
 
     var body: some View {
@@ -112,8 +121,11 @@ struct OnboardingView: View {
             HStack(spacing: 6) {
                 Text("Continue without account")
                     .font(.body.weight(.semibold))
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                PicklyIconImage(
+                    systemName: "chevron.right",
+                    size: 13,
+                    scalesWithDynamicType: false
+                )
             }
             .foregroundStyle(PicklyColor.primary)
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -132,8 +144,11 @@ struct OnboardingView: View {
                 HStack {
                     if selectedPage > 0 {
                         Button(action: goBack) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 18, weight: .semibold))
+                            PicklyIconImage(
+                                systemName: "chevron.left",
+                                size: 18,
+                                scalesWithDynamicType: false
+                            )
                                 .foregroundStyle(selectedPage == pageCount - 1 ? Color.primary : PicklyColor.primary)
                         }
                         .frame(width: headerControlSize, height: headerControlSize)

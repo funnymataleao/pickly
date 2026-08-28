@@ -59,7 +59,7 @@ struct MockProductService: ProductService {
             score: 88,
             summary: "A calmer breakfast choice with very little added sugar and a short ingredient list.",
             reasons: ["Very low added sugar", "Short ingredient list", "Good source of fiber"],
-            warnings: ["Flavor is less sweet than many cereals"],
+            warnings: [],
             positives: ["Less added sugar", "Shorter ingredient list"],
             forYouNotes: ["Better option if you're limiting sugar"],
             alternativeIDs: ["protein-granola"],

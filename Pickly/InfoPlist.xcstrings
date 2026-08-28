@@ -1,0 +1,20 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSCameraUsageDescription" : {
+      "comment" : "Explain that Pickly uses the camera only to scan grocery product barcodes.",
+      "localizations" : {
+        "cs" : { "stringUnit" : { "state" : "translated", "value" : "Pickly používa fotoaparát na skenovanie čiarových kódov potravín." } },
+        "da" : { "stringUnit" : { "state" : "translated", "value" : "Pickly bruger kameraet til at scanne stregkoder på dagligvarer." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Pickly verwendet die Kamera, um die Barcodes von Lebensmitteln zu scannen." } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pickly uses the camera to scan product barcodes." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Pickly usa la cámara para escanear códigos de barras de productos." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Pickly utilise l’appareil photo pour scanner les codes-barres des produits." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Pickly usa la fotocamera per scansionare i codici a barre dei prodotti." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Pickly używa aparatu do skanowania kodów kreskowych produktów." } },
+        "pt-PT" : { "stringUnit" : { "state" : "translated", "value" : "A Pickly utiliza a câmara para ler códigos de barras de produtos." } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

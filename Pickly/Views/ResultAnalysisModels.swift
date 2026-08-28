@@ -43,15 +43,15 @@ enum ResultStatus: String, Hashable {
     var badgeText: String {
         switch self {
         case .good:
-            return "Good"
+            return PicklyCopy.localized("Good")
         case .medium:
-            return "Neutral"
+            return PicklyCopy.localized("Neutral")
         case .bad:
-            return "Watch"
+            return PicklyCopy.localized("Watch")
         case .avoid:
-            return "Watch"
+            return PicklyCopy.localized("Watch")
         case .unknown:
-            return "Neutral"
+            return PicklyCopy.localized("Neutral")
         }
     }
 }
@@ -115,48 +115,52 @@ struct NutritionFact: Identifiable, Hashable {
 
 extension Product {
     var resultDisplayName: String {
-        name == "Unknown product" ? "Product partially recognized" : name
+        name == "Unknown product"
+            ? PicklyCopy.localized("Product partially recognized")
+            : name
     }
 
     var resultSubtitle: String {
-        name == "Unknown product" ? "Partial product details" : brand
+        name == "Unknown product"
+            ? PicklyCopy.localized("Partial product details")
+            : displayBrandName
     }
 
     var resultVerdict: String {
-        verdict
+        localizedVerdict
     }
 
     var resultHeadline: String {
         if isLimitedData {
-            return "Limited data"
+            return PicklyCopy.localized("Limited data")
         }
 
         guard let score else {
-            return "Limited data"
+            return PicklyCopy.localized("Limited data")
         }
 
         switch score {
         case 85...100:
-            return "Great choice"
+            return PicklyCopy.localized("Great choice")
         case 70..<85:
-            return "Good choice"
+            return PicklyCopy.localized("Good choice")
         case 50..<70:
-            return "Okay for occasionally"
+            return PicklyCopy.localized("Okay for occasionally")
         default:
-            return "Worth comparing"
+            return PicklyCopy.localized("Worth comparing")
         }
     }
 
     var resultSummary: String {
         if isLimitedData {
-            return "We don't have enough nutrition or ingredient data to score this product confidently."
+            return PicklyCopy.localized("We don't have enough nutrition or ingredient data to score this product confidently.")
         }
 
         return summary
     }
 
     var confidenceText: String {
-        "Confidence: \(confidence)"
+        PicklyCopy.format("Confidence: %@", locale: .current, PicklyCopy.localized(confidence))
     }
 
     var resultScoreColor: Color {
@@ -210,49 +214,41 @@ extension Product {
 
         return [
             NutritionFact(
-                id: "calories",
-                title: "Calories",
-                value: "Not available",
-                percent: nil,
-                status: .unknown,
-                isKeyFact: true
-            ),
-            NutritionFact(
                 id: "sugar",
-                title: sugarLabel.capitalized,
-                value: sugarForScoring.map { formattedGrams($0) } ?? "Not available",
+                title: PicklyCopy.localized(sugarLabel == "added sugar" ? "Added sugar" : "Sugar"),
+                value: sugarForScoring.map { formattedGrams($0) } ?? PicklyCopy.localized("Not available"),
                 percent: nil,
                 status: statusForSugar,
                 isKeyFact: true
             ),
             NutritionFact(
                 id: "salt",
-                title: "Salt / Sodium",
-                value: nutrition.salt100g.map { "\(formattedGrams($0)) salt" } ?? "Not available",
+                title: PicklyCopy.localized("Salt / Sodium"),
+                value: nutrition.salt100g.map { "\(formattedGrams($0)) \(PicklyCopy.localized("salt"))" } ?? PicklyCopy.localized("Not available"),
                 percent: sodiumPercent,
                 status: sodiumStatus,
                 isKeyFact: true
             ),
             NutritionFact(
                 id: "protein",
-                title: "Protein",
-                value: nutrition.proteins100g.map { formattedGrams($0) } ?? "Not available",
+                title: PicklyCopy.localized("Protein"),
+                value: nutrition.proteins100g.map { formattedGrams($0) } ?? PicklyCopy.localized("Not available"),
                 percent: nil,
                 status: statusForProteinFiber,
                 isKeyFact: true
             ),
             NutritionFact(
                 id: "fat",
-                title: "Saturated fat",
-                value: nutrition.saturatedFat100g.map { "\(formattedGrams($0)) sat fat" } ?? "Not available",
+                title: PicklyCopy.localized("Saturated fat"),
+                value: nutrition.saturatedFat100g.map { "\(formattedGrams($0)) \(PicklyCopy.localized("sat fat"))" } ?? PicklyCopy.localized("Not available"),
                 percent: nil,
                 status: statusForSaturatedFat,
                 isKeyFact: true
             ),
             NutritionFact(
                 id: "fiber",
-                title: "Fiber",
-                value: nutrition.fiber100g.map { formattedGrams($0) } ?? "Not available",
+                title: PicklyCopy.localized("Fiber"),
+                value: nutrition.fiber100g.map { formattedGrams($0) } ?? PicklyCopy.localized("Not available"),
                 percent: nil,
                 status: statusForFiber,
                 isKeyFact: false
@@ -264,85 +260,81 @@ extension Product {
         var items: [String] = []
 
         if let salt = nutrition.salt100g, salt >= 1.0 {
-            items.append("Pick lower sodium")
+            items.append(PicklyCopy.localized("Pick lower sodium"))
         }
 
         if let sugar = sugarForScoring, sugar >= 12 {
-            items.append("Pick lower sugar")
+            items.append(PicklyCopy.localized("Pick lower sugar"))
         }
 
         if ingredients.count > 12 {
-            items.append("Prefer shorter lists")
+            items.append(PicklyCopy.localized("Prefer shorter lists"))
         }
 
         if ingredientAnalyses.contains(where: { $0.status == .bad || $0.status == .avoid }) {
-            items.append("Prefer fewer additives")
+            items.append(PicklyCopy.localized("Prefer fewer additives"))
         }
 
         return Array(items.prefix(3))
     }
 
     func forYouMessages(preferences: UserPreferences) -> [String] {
-        var messages = forYouNotes
+        var messages: [String] = []
 
         if preferences.lowSugar, let sugar = sugarForScoring, sugar >= 12 {
-            messages.append("May not be the best choice if you're reducing sugar")
+            messages.append(PicklyCopy.localized("May not be the best choice if you're reducing sugar"))
         }
 
         if preferences.lowSodium, let salt = nutrition.salt100g, salt >= 1.0 {
-            messages.append("You might prefer a lower sodium option")
+            messages.append(PicklyCopy.localized("You might prefer a lower sodium option"))
         }
 
         if preferences.sensitiveDigestion, ingredients.count > 8 {
-            messages.append("Gentler picks usually have shorter ingredient lists")
+            messages.append(PicklyCopy.localized("Gentler picks usually have shorter ingredient lists"))
         }
 
         if preferences.glutenFree {
             switch dietary.glutenFree {
             case .confirmed:
-                break
+                messages.append(PicklyCopy.localized("Fits your gluten-free preference"))
             case .notSuitable:
-                messages.append("May not fit a gluten-free preference")
+                messages.append(PicklyCopy.localized("May not fit a gluten-free preference"))
             case .unknown:
-                messages.append("Gluten-free status is not confirmed in the available data")
+                break
             }
         }
 
         if preferences.lactoseFree {
             switch dietary.lactoseFree {
             case .confirmed:
-                break
+                messages.append(PicklyCopy.localized("Fits your lactose-free preference"))
             case .notSuitable:
-                messages.append("May not fit a lactose-free preference")
+                messages.append(PicklyCopy.localized("May not fit a lactose-free preference"))
             case .unknown:
-                messages.append("Lactose-free status is not confirmed in the available data")
+                break
             }
         }
 
         if preferences.vegan {
             switch dietary.vegan {
             case .confirmed:
-                break
+                messages.append(PicklyCopy.localized("Fits your vegan preference"))
             case .notSuitable:
-                messages.append("May not fit a vegan preference")
+                messages.append(PicklyCopy.localized("May not fit a vegan preference"))
             case .unknown:
-                messages.append("Vegan status is not confirmed in the available data")
+                break
             }
         }
 
         if preferences.vegetarian {
             switch dietary.vegetarian {
             case .confirmed:
-                break
+                messages.append(PicklyCopy.localized("Fits your vegetarian preference"))
             case .notSuitable:
-                messages.append("May not fit a vegetarian preference")
+                messages.append(PicklyCopy.localized("May not fit a vegetarian preference"))
             case .unknown:
-                messages.append("Vegetarian status is not confirmed in the available data")
+                break
             }
-        }
-
-        if messages.isEmpty {
-            messages.append("No personal watch-outs based on your current preferences")
         }
 
         return Array(uniqueMessages(messages).prefix(3))
@@ -353,10 +345,10 @@ extension Product {
             return ProductInsight(
                 id: "sodium",
                 icon: "drop",
-                title: "Sodium",
-                status: "Limited",
-                value: "Not available",
-                explanation: "Sodium data is not available.",
+                title: PicklyCopy.localized("Sodium"),
+                status: PicklyCopy.localized("Limited"),
+                value: PicklyCopy.localized("Not available"),
+                explanation: PicklyCopy.localized("Sodium data is not available."),
                 resultStatus: .unknown
             )
         }
@@ -366,30 +358,30 @@ extension Product {
             return ProductInsight(
                 id: "sodium",
                 icon: "drop",
-                title: "Sodium",
-                status: "Low",
-                value: "\(formattedGrams(salt)) salt",
-                explanation: "Low salt per 100g.",
+                title: PicklyCopy.localized("Sodium"),
+                status: PicklyCopy.localized("Low"),
+                value: "\(formattedGrams(salt)) \(PicklyCopy.localized("salt"))",
+                explanation: PicklyCopy.localized("Low salt per 100g."),
                 resultStatus: .good
             )
         case 0.3..<1.0:
             return ProductInsight(
                 id: "sodium",
                 icon: "drop",
-                title: "Sodium",
-                status: "Moderate",
-                value: "\(formattedGrams(salt)) salt",
-                explanation: "Reasonable, but worth checking serving size.",
+                title: PicklyCopy.localized("Sodium"),
+                status: PicklyCopy.localized("Moderate"),
+                value: "\(formattedGrams(salt)) \(PicklyCopy.localized("salt"))",
+                explanation: PicklyCopy.localized("Reasonable, but worth checking serving size."),
                 resultStatus: .medium
             )
         default:
             return ProductInsight(
                 id: "sodium",
                 icon: "drop",
-                title: "Sodium",
-                status: "High",
-                value: "\(formattedGrams(salt)) salt",
-                explanation: "Not ideal for daily use if you are limiting sodium.",
+                title: PicklyCopy.localized("Sodium"),
+                status: PicklyCopy.localized("High"),
+                value: "\(formattedGrams(salt)) \(PicklyCopy.localized("salt"))",
+                explanation: PicklyCopy.localized("Not ideal for daily use if you are limiting sodium."),
                 resultStatus: .bad
             )
         }
@@ -400,10 +392,10 @@ extension Product {
             return ProductInsight(
                 id: "sugar",
                 icon: "cube",
-                title: "Sugar",
-                status: "Limited",
-                value: "Not available",
-                explanation: "Sugar data is not available yet.",
+                title: PicklyCopy.localized("Sugar"),
+                status: PicklyCopy.localized("Limited"),
+                value: PicklyCopy.localized("Not available"),
+                explanation: PicklyCopy.localized("Sugar data is not available yet."),
                 resultStatus: .unknown
             )
         }
@@ -413,30 +405,36 @@ extension Product {
             return ProductInsight(
                 id: "sugar",
                 icon: "cube",
-                title: sugarLabel.capitalized,
-                status: "Low",
+                title: PicklyCopy.localized(sugarLabel == "added sugar" ? "Added sugar" : "Sugar"),
+                status: PicklyCopy.localized("Low"),
                 value: formattedGrams(sugar),
-                explanation: "Low \(sugarLabel) per 100g.",
+                explanation: PicklyCopy.format(
+                    "Low %@ per 100g.",
+                    PicklyCopy.localized(sugarLabel == "added sugar" ? "added sugar" : "sugar")
+                ),
                 resultStatus: .good
             )
         case 5..<12:
             return ProductInsight(
                 id: "sugar",
                 icon: "cube",
-                title: sugarLabel.capitalized,
-                status: "Moderate",
+                title: PicklyCopy.localized(sugarLabel == "added sugar" ? "Added sugar" : "Sugar"),
+                status: PicklyCopy.localized("Moderate"),
                 value: formattedGrams(sugar),
-                explanation: "Moderate \(sugarLabel) level per 100g.",
+                explanation: PicklyCopy.format(
+                    "Moderate %@ level per 100g.",
+                    PicklyCopy.localized(sugarLabel == "added sugar" ? "added sugar" : "sugar")
+                ),
                 resultStatus: .medium
             )
         default:
             return ProductInsight(
                 id: "sugar",
                 icon: "cube",
-                title: sugarLabel.capitalized,
-                status: "Higher",
+                title: PicklyCopy.localized(sugarLabel == "added sugar" ? "Added sugar" : "Sugar"),
+                status: PicklyCopy.localized("Higher"),
                 value: formattedGrams(sugar),
-                explanation: "May not be the best everyday choice if reducing sugar.",
+                explanation: PicklyCopy.localized("May not be the best everyday choice if reducing sugar."),
                 resultStatus: .bad
             )
         }
@@ -449,10 +447,10 @@ extension Product {
             return ProductInsight(
                 id: "ingredients",
                 icon: "list.bullet.rectangle",
-                title: "Ingredients",
-                status: "Limited",
-                value: "Not available",
-                explanation: "Ingredients are not available yet.",
+                title: PicklyCopy.localized("Ingredients"),
+                status: PicklyCopy.localized("Limited"),
+                value: PicklyCopy.localized("Not available"),
+                explanation: PicklyCopy.localized("Ingredients are not available yet."),
                 resultStatus: .unknown
             )
         }
@@ -461,10 +459,10 @@ extension Product {
             return ProductInsight(
                 id: "ingredients",
                 icon: "list.bullet.rectangle",
-                title: "Ingredients",
-                status: "Simple",
+                title: PicklyCopy.localized("Ingredients"),
+                status: PicklyCopy.localized("Simple"),
                 value: ingredientCountLabel,
-                explanation: "Short ingredient list.",
+                explanation: PicklyCopy.localized("Short ingredient list."),
                 resultStatus: .good
             )
         }
@@ -473,10 +471,10 @@ extension Product {
             return ProductInsight(
                 id: "ingredients",
                 icon: "list.bullet.rectangle",
-                title: "Ingredients",
-                status: "Mixed",
+                title: PicklyCopy.localized("Ingredients"),
+                status: PicklyCopy.localized("Mixed"),
                 value: ingredientCountLabel,
-                explanation: "Longer ingredient list than simpler options.",
+                explanation: PicklyCopy.localized("Longer ingredient list than simpler options."),
                 resultStatus: .medium
             )
         }
@@ -484,10 +482,10 @@ extension Product {
         return ProductInsight(
             id: "ingredients",
             icon: "list.bullet.rectangle",
-            title: "Ingredients",
-            status: "Watch",
-            value: "\(cautionIngredients.count) \(cautionIngredients.count == 1 ? "item" : "items")",
-            explanation: "Some ingredients may be worth checking.",
+            title: PicklyCopy.localized("Ingredients"),
+            status: PicklyCopy.localized("Watch"),
+            value: "\(cautionIngredients.count) \(cautionIngredients.count == 1 ? PicklyCopy.localized("item") : PicklyCopy.localized("items"))",
+            explanation: PicklyCopy.localized("Some ingredients may be worth checking."),
             resultStatus: .bad
         )
     }
@@ -500,26 +498,26 @@ extension Product {
             return ProductInsight(
                 id: "protein-fiber",
                 icon: "leaf",
-                title: "Protein",
-                status: "Limited",
-                value: "Not available",
-                explanation: "Protein and fiber data are incomplete.",
+                title: PicklyCopy.localized("Protein"),
+                status: PicklyCopy.localized("Limited"),
+                value: PicklyCopy.localized("Not available"),
+                explanation: PicklyCopy.localized("Protein and fiber data are incomplete."),
                 resultStatus: .unknown
             )
         }
 
-        let value = protein.map { "\(formattedGrams($0)) protein" }
-            ?? fiber.map { "\(formattedGrams($0)) fiber" }
-            ?? "Not available"
+        let value = protein.map { "\(formattedGrams($0)) \(PicklyCopy.localized("protein"))" }
+            ?? fiber.map { "\(formattedGrams($0)) \(PicklyCopy.localized("fiber"))" }
+            ?? PicklyCopy.localized("Not available")
 
         if (protein ?? 0) >= 10 || (fiber ?? 0) >= 6 {
             return ProductInsight(
                 id: "protein-fiber",
                 icon: "leaf",
-                title: "Protein",
-                status: "Helpful",
+                title: PicklyCopy.localized("Protein"),
+                status: PicklyCopy.localized("Helpful"),
                 value: value,
-                explanation: "Adds useful protein or fiber.",
+                explanation: PicklyCopy.localized("Adds useful protein or fiber."),
                 resultStatus: .good
             )
         }
@@ -527,10 +525,10 @@ extension Product {
         return ProductInsight(
             id: "protein-fiber",
             icon: "leaf",
-            title: "Protein",
-            status: "Modest",
+            title: PicklyCopy.localized("Protein"),
+            status: PicklyCopy.localized("Modest"),
             value: value,
-            explanation: "Some nutrition upside, but not a standout.",
+            explanation: PicklyCopy.localized("Some nutrition upside, but not a standout."),
             resultStatus: .medium
         )
     }
@@ -626,38 +624,38 @@ extension Product {
         let lowercased = ingredient.lowercased()
 
         if lowercased.contains("sugar") || lowercased.contains("syrup") || lowercased.contains("honey") {
-            return "Adds sweetness and can raise the sugar level."
+            return PicklyCopy.localized("Adds sweetness and can raise the sugar level.")
         }
 
         if lowercased.contains("salt") || lowercased.contains("sodium") {
-            return "Adds flavor and can raise sodium."
+            return PicklyCopy.localized("Adds flavor and can raise sodium.")
         }
 
         if lowercased.contains("color") || lowercased.contains("colour") || lowercased.contains("caramel") {
-            return "Worth watching if you prefer simpler ingredients."
+            return PicklyCopy.localized("Worth watching if you prefer simpler ingredients.")
         }
 
         if lowercased.contains("flavor") || lowercased.contains("preservative") || lowercased.contains("artificial") {
-            return "Usually fine, but simpler options may use fewer additives."
+            return PicklyCopy.localized("Usually fine, but simpler options may use fewer additives.")
         }
 
         if lowercased.contains("protein") {
-            return "Helpful protein source."
+            return PicklyCopy.localized("Helpful protein source.")
         }
 
         if lowercased.contains("fiber") || lowercased.contains("oat") || lowercased.contains("lentil") {
-            return "Simple ingredient that can add fiber."
+            return PicklyCopy.localized("Simple ingredient that can add fiber.")
         }
 
         if lowercased.contains("milk") || lowercased.contains("cream") {
-            return "Dairy ingredient that can add texture and protein."
+            return PicklyCopy.localized("Dairy ingredient that can add texture and protein.")
         }
 
         if lowercased.contains("water") {
-            return "Used as a base ingredient."
+            return PicklyCopy.localized("Used as a base ingredient.")
         }
 
-        return "Limited details, treated as neutral for now."
+        return PicklyCopy.localized("Limited details, treated as neutral for now.")
     }
 
     private func formattedGrams(_ value: Double) -> String {

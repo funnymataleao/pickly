@@ -1,5 +1,19 @@
 import SwiftUI
 
+enum GoalRecommendationContentBuilder {
+    static func plusProducts(
+        from rankedProducts: [Product],
+        freeLimit: Int,
+        plusLimit: Int
+    ) -> [Product] {
+        guard freeLimit >= 0, plusLimit > 0 else {
+            return []
+        }
+
+        return Array(rankedProducts.dropFirst(freeLimit).prefix(plusLimit))
+    }
+}
+
 struct SearchView: View {
     @ObservedObject var catalog: ProductCatalogStore
     @ObservedObject var savedStore: SavedProductsStore
@@ -7,6 +21,8 @@ struct SearchView: View {
     let preferences: UserPreferences
     var onOpenPreferences: (() -> Void)? = nil
     var onScanAnotherProduct: (() -> Void)? = nil
+
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
     @State private var query = ""
     @State private var selectedGoal: GroceryGoal = .all
@@ -18,7 +34,7 @@ struct SearchView: View {
 
     private let homeGoalPreviewLimit = 4
     private let homeGoalCarouselLimit = 30
-    private let homeRecentPreviewLimit = 3
+    private let homeRecentPreviewLimit = 5
 
     private var products: [Product] {
         catalog.searchProducts(matching: query)
@@ -42,7 +58,7 @@ struct SearchView: View {
 
     private var recentProducts: [Product] {
         savedStore.recentProducts.compactMap { recentProduct in
-            savedStore.product(id: recentProduct.productId) ?? catalog.product(id: recentProduct.productId)
+            catalog.product(id: recentProduct.productId) ?? savedStore.product(id: recentProduct.productId)
         }
     }
 
@@ -50,10 +66,18 @@ struct SearchView: View {
         Array(recentProducts.prefix(homeRecentPreviewLimit))
     }
 
+    private var homeBrowseProducts: [Product] {
+        let recentIDs = Set(recentProducts.map(\.id))
+        return Array(
+            catalog.products
+                .filter { !recentIDs.contains($0.id) && !$0.isLimitedData }
+                .prefix(4)
+        )
+    }
+
     private var goalMatchedProducts: [Product] {
-        GroceryGoal.healthiestMatchingProducts(
-            in: catalog.products,
-            filter: selectedGoal,
+        catalog.goalProducts(
+            for: selectedGoal,
             preferredGoals: preferredGoals
         )
     }
@@ -63,9 +87,11 @@ struct SearchView: View {
     }
 
     private var homeGoalCarouselProducts: [Product] {
-        let productsAfterMainFeed = Array(goalMatchedProducts.dropFirst(homeGoalPreviewLimit))
-        let mainFeedProducts = Array(goalMatchedProducts.prefix(homeGoalPreviewLimit))
-        return Array((productsAfterMainFeed + mainFeedProducts).prefix(homeGoalCarouselLimit))
+        GoalRecommendationContentBuilder.plusProducts(
+            from: goalMatchedProducts,
+            freeLimit: homeGoalPreviewLimit,
+            plusLimit: homeGoalCarouselLimit
+        )
     }
 
     private var goalsForRecommendationLoad: [GroceryGoal] {
@@ -73,15 +99,49 @@ struct SearchView: View {
     }
 
     private var goalRecommendationTaskID: String {
-        let goalIDs = goalsForRecommendationLoad.map(\.id).joined(separator: "-")
-        return "\(catalog.hasLoaded)-\(goalIDs)"
+        goalsForRecommendationLoad.map(\.id).joined(separator: "-")
+    }
+
+    private var selectedGoalLoadTargets: [GroceryGoal] {
+        selectedGoal == .all ? goalsForRecommendationLoad : [selectedGoal]
+    }
+
+    private var isLoadingSelectedGoal: Bool {
+        catalog.isLoadingGoalRecommendation(
+            for: selectedGoal,
+            preferredGoals: preferredGoals
+        )
+    }
+
+    private var selectedGoalError: String? {
+        catalog.goalRecommendationError(
+            for: selectedGoal,
+            preferredGoals: preferredGoals
+        )
+    }
+
+    private var selectedGoalHasMore: Bool {
+        selectedGoal != .all && catalog.hasMoreGoalRecommendations(for: selectedGoal)
+    }
+
+    private var goalSectionSubtitle: String {
+        guard selectedGoal != .all,
+              let total = catalog.goalRecommendationTotal(
+                  for: selectedGoal,
+                  preferredGoals: preferredGoals
+              ),
+              total > 0 else {
+            return "Picked for your preferences"
+        }
+
+        return "\(total.formatted()) catalog products"
     }
 
     var body: some View {
         List {
             PicklyContentHeader(
-                title: "Check your groceries",
-                subtitle: "Find better picks faster.",
+                title: "Scan or search",
+                subtitle: "Find a clearer choice.",
                 usesImageBackdrop: true
             )
             .picklyContentHeaderRow(top: 44, bottom: 12)
@@ -98,8 +158,10 @@ struct SearchView: View {
             } else {
                 goalsSection
                 goalRecommendationsSection
-                premiumBanner
+
                 recentSection
+
+                browseSection
 
                 MissingProductCard {
                     showProductRequest = true
@@ -112,9 +174,6 @@ struct SearchView: View {
         .listStyle(.plain)
         .contentMargins(.horizontal, PicklyLayout.screenHorizontalPadding, for: .scrollContent)
         .contentMargins(.top, PicklyLayout.rootTopPadding + 16, for: .scrollContent)
-        // The native TabView already contributes the bottom safe-area inset for
-        // its tab bar. Adding another 96pt here leaves an empty band below the
-        // final home card.
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .background {
@@ -122,15 +181,6 @@ struct SearchView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $selectedProduct) { product in
-            ProductResultView(
-                product: product,
-                productService: catalog,
-                savedStore: savedStore,
-                preferences: preferences,
-                onScanAnotherProduct: onScanAnotherProduct
-            )
-        }
-        .navigationDestination(for: Product.self) { product in
             ProductResultView(
                 product: product,
                 productService: catalog,
@@ -169,14 +219,26 @@ struct SearchView: View {
         }
         .onAppear {
             syncSelectedGoal(with: preferences)
+#if DEBUG
+            if let goalArgumentIndex = ProcessInfo.processInfo.arguments.firstIndex(of: "-pickly-goal"),
+               let rawGoal = ProcessInfo.processInfo.arguments.dropFirst(goalArgumentIndex + 1).first,
+               let debugGoal = GroceryGoal(rawValue: rawGoal),
+               availableGoals.contains(debugGoal) {
+                selectedGoal = debugGoal
+            }
+#endif
         }
         .onChange(of: preferences) { _, newPreferences in
             syncSelectedGoal(with: newPreferences)
         }
-        .task {
-            await catalog.loadInitial()
+        .onChange(of: selectedGoal) { _, newGoal in
+            guard newGoal != .all else { return }
+            Task {
+                await catalog.loadGoalRecommendations(for: [newGoal], limit: 12)
+            }
         }
         .task(id: goalRecommendationTaskID) {
+            await catalog.loadInitial()
             guard hasPersonalGoals, !goalsForRecommendationLoad.isEmpty else { return }
 
             // Let the first local frame render, then enrich the shelf. The
@@ -221,7 +283,7 @@ struct SearchView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .picklyCardSurface(cornerRadius: 22)
                 .picklyListCardRow(top: 10, bottom: 16)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(.opacity)
         } else {
             ProductSummaryList(
                 products: products,
@@ -241,7 +303,7 @@ struct SearchView: View {
             )
             .id("search-\(query)")
             .picklyListCardRow(top: 10, bottom: 16)
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .transition(.opacity)
         }
     }
 
@@ -250,7 +312,7 @@ struct SearchView: View {
         if hasPersonalGoals {
             PicklyListSectionHeader(
                 title: "Your goals",
-                subtitle: "Picked for your preferences",
+                subtitle: goalSectionSubtitle,
                 actionTitle: "Edit",
                 actionIcon: "square.and.pencil",
                 onAction: onOpenPreferences
@@ -262,7 +324,7 @@ struct SearchView: View {
                 selectedGoal: $selectedGoal
             )
 
-            if (catalog.isLoading || catalog.isLoadingGoalRecommendations) && goalMatchedProducts.isEmpty {
+            if (catalog.isLoading || isLoadingSelectedGoal) && goalMatchedProducts.isEmpty {
                 ProgressView("Loading products…")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(20)
@@ -270,27 +332,35 @@ struct SearchView: View {
                     .picklyListCardRow(top: 4, bottom: 16)
             } else if goalMatchedProducts.isEmpty {
                 HomeEmptyStateCard(
-                    title: catalog.goalRecommendationsErrorMessage == nil
-                        ? "No verified matches yet"
+                    title: selectedGoalError == nil
+                        ? (selectedGoalHasMore ? "Still checking matches" : "No verified matches yet")
                         : "Couldn't refresh matches",
-                    message: catalog.goalRecommendationsErrorMessage
-                        ?? "No catalog products are verified for this goal yet. Try another goal or scan a product.",
-                    actionTitle: catalog.goalRecommendationsErrorMessage == nil
-                        ? "Scan product"
+                    message: selectedGoalError
+                        ?? (selectedGoalHasMore
+                            ? "The first catalog page had no complete, verified products. You can check the next page."
+                            : "No catalog products are verified for this goal yet. Try another goal or scan a product."),
+                    actionTitle: selectedGoalError == nil
+                        ? (selectedGoalHasMore ? "Load more" : "Scan product")
                         : "Try again",
-                    action: catalog.goalRecommendationsErrorMessage == nil
-                        ? onScanAnotherProduct
+                    action: selectedGoalError == nil
+                        ? (selectedGoalHasMore
+                            ? {
+                                Task {
+                                    await catalog.loadMoreGoalRecommendations(for: selectedGoal)
+                                }
+                            }
+                            : onScanAnotherProduct)
                         : {
                             Task {
                                 await catalog.retryGoalRecommendations(
-                                    for: goalsForRecommendationLoad,
+                                    for: selectedGoalLoadTargets,
                                     limit: 12
                                 )
                             }
                         }
                 )
                 .picklyListCardRow(top: 4, bottom: 16)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(.opacity)
             } else {
                 ProductSummaryList(
                     products: homeGoalProducts,
@@ -308,58 +378,66 @@ struct SearchView: View {
                         selectedProduct = product
                     }
                 )
-                .id("goals-\(selectedGoal.id)")
                 .picklyListCardRow(top: 4, bottom: goalMatchedProducts.count > homeGoalPreviewLimit ? 8 : 16)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(.opacity)
 
                 HomeSeeAllButton(title: "See all") {
                     showAllGoalMatches = true
                 }
-                .picklyListCardRow(top: 0, bottom: 16)
+                .picklyListCardRow(top: 8, bottom: 16)
             }
         } else {
-            PicklyListSectionHeader(
-                title: "Your goals",
-                subtitle: "Picked for your preferences"
-            )
-            .picklyListSectionHeaderRow(top: 24, bottom: 10)
-
-            HomeEmptyStateCard(
-                title: "Set your goals",
-                message: "Get picks matched to what matters to you.",
-                actionTitle: "Choose goals",
-                action: onOpenPreferences
-            )
-            .picklyListCardRow(top: 4, bottom: 16)
+            // Keep the initial feed focused. Goals remain available from the
+            // Profile tab and the personalized shelf appears after selection.
+            EmptyView()
         }
     }
 
     @ViewBuilder
     private var goalRecommendationsSection: some View {
         if hasPersonalGoals, !homeGoalCarouselProducts.isEmpty {
-            LockedGoalSectionHeader()
-            .picklyListSectionHeaderRow(top: 22, bottom: 8)
+            switch PicklyPlusContentGate.state(
+                isPlus: subscriptionStore.isPlus,
+                hasContent: !homeGoalCarouselProducts.isEmpty
+            ) {
+            case .unavailable:
+                EmptyView()
+            case .locked:
+                GoalRecommendationsSectionHeader(showsPlusBadge: true)
+                    .picklyListSectionHeaderRow(top: 22, bottom: 8)
 
-            LockedProductCarousel(
-                products: homeGoalCarouselProducts,
-                reasonProvider: { product in
-                    goalReason(for: product)
-                },
-                accessibilityItemName: "goal match",
-                onUpgrade: {
-                    showPaywall = true
-                }
-            )
-            .id("goal-recommendations-\(selectedGoal.id)")
-            .picklyListCardRow(top: 2, bottom: 16)
-        }
-    }
+                LockedProductCarousel(
+                    products: homeGoalCarouselProducts,
+                    reasonProvider: { product in
+                        goalReason(for: product)
+                    },
+                    accessibilityItemName: "goal match",
+                    onUpgrade: {
+                        showPaywall = true
+                    }
+                )
+                .id("locked-goal-recommendations-\(selectedGoal.id)")
+                .picklyListCardRow(top: 2, bottom: 16)
+            case .unlocked:
+                GoalRecommendationsSectionHeader(showsPlusBadge: false)
+                    .picklyListSectionHeaderRow(top: 22, bottom: 8)
 
-    private var premiumBanner: some View {
-        PremiumBanner {
-            showPaywall = true
+                UnlockedProductCarousel(
+                    products: homeGoalCarouselProducts,
+                    reasonProvider: { product in
+                        goalReason(for: product)
+                    },
+                    isSaved: { product in
+                        savedStore.isSaved(product)
+                    },
+                    onSelect: { product in
+                        selectedProduct = product
+                    }
+                )
+                .id("unlocked-goal-recommendations-\(selectedGoal.id)")
+                .picklyListCardRow(top: 2, bottom: 16)
+            }
         }
-        .picklyListCardRow(top: 12, bottom: 12)
     }
 
     @ViewBuilder
@@ -398,16 +476,45 @@ struct SearchView: View {
                 }
             )
             .picklyListCardRow(top: 4, bottom: 16)
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .transition(.opacity)
         }
     }
 
     private func accessibilityLabel(for product: Product) -> String {
         if !product.isLimitedData, let score = product.score {
-            return "\(product.name), \(product.brand), \(product.verdict), score \(score)"
+            return "\(product.name), \(product.brand), \(product.localizedVerdict), \(PicklyCopy.localized("score")) \(score)"
         }
 
-        return "\(product.name), \(product.brand), Limited data"
+        return PicklyCopy.format("%@, %@, %@", product.name, product.brand, PicklyCopy.localized("Limited data"))
+    }
+
+    @ViewBuilder
+    private var browseSection: some View {
+        // Keep a small discovery shelf below recent scans. Excluding recent
+        // IDs prevents duplicate cards while ensuring a short history never
+        // leaves the Home feed looking unfinished.
+        if !homeBrowseProducts.isEmpty {
+            PicklyListSectionHeader(
+                title: "Explore picks",
+                subtitle: "A few more products to explore"
+            )
+            .picklyListSectionHeaderRow(top: 20, bottom: 10)
+
+            // Discovery products stay compact so the Home feed remains
+            // scannable while still offering useful content after a short
+            // recent-history shelf.
+            ProductRowsCard(
+                products: homeBrowseProducts,
+                isSaved: { product in
+                    savedStore.isSaved(product)
+                },
+                accessibilityLabel: accessibilityLabel(for:),
+                onSelect: { product in
+                    selectedProduct = product
+                }
+            )
+            .picklyListCardRow(top: 4, bottom: 16)
+        }
     }
 
     private func goalReason(for product: Product) -> String {
@@ -423,7 +530,11 @@ struct SearchView: View {
     }
 
     private func recentReason(for product: Product) -> String {
-        if let match = preferredGoals.first(where: { $0.matches(product) }) {
+        if let match = GroceryGoal.primaryMatch(
+            for: product,
+            filter: .all,
+            preferredGoals: preferredGoals
+        ) {
             return match.productReason
         }
 
@@ -432,26 +543,30 @@ struct SearchView: View {
 
     private func searchReason(for product: Product) -> String {
         if product.isLimitedData {
-            return "Limited data"
+            return PicklyCopy.localized("Limited data")
+        }
+
+        if let score = product.score, score < 70 {
+            return product.warnings.first ?? PicklyCopy.localized("Review what to watch")
         }
 
         if (product.sugarForScoring ?? .greatestFiniteMagnitude) <= 5 {
-            return product.sugarLabel == "added sugar" ? "Low added sugar" : "Low sugar"
+            return PicklyCopy.localized(product.sugarLabel == "added sugar" ? "Low added sugar" : "Low sugar")
         }
 
         if (product.nutrition.salt100g ?? .greatestFiniteMagnitude) <= 0.8 {
-            return "Lower salt"
+            return PicklyCopy.localized("Low salt")
         }
 
         if (product.nutrition.proteins100g ?? 0) >= 8 {
-            return "Good protein"
+            return PicklyCopy.localized("Good protein")
         }
 
         if !product.ingredients.isEmpty && product.ingredients.count <= 4 {
-            return "Short ingredients"
+            return PicklyCopy.localized("Short ingredients")
         }
 
-        return product.positives.first ?? product.verdict
+        return product.positives.first ?? product.localizedVerdict
     }
 
     private func syncSelectedGoal(with preferences: UserPreferences) {
@@ -503,9 +618,12 @@ private struct GoalScroller: View {
     }
 
     private func toggle(_ goal: GroceryGoal) {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-            selectedGoal = goal
-        }
+        guard selectedGoal != goal else { return }
+
+        // Keep the feed in the default transaction. Animating the parent List
+        // makes every row reflow when a filter changes, which reads as a jump.
+        // GoalChip owns the small, direct selection animation below instead.
+        selectedGoal = goal
     }
 }
 
@@ -513,12 +631,12 @@ private struct SearchViewBackdrop: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
 
-    private var blurRadius: CGFloat {
-        reduceTransparency ? 0 : 2
-    }
-
     private var imageOpacity: CGFloat {
-        colorScheme == .dark ? 0.70 : 0.94
+        if reduceTransparency {
+            return colorScheme == .dark ? 0.34 : 0.28
+        }
+
+        return colorScheme == .dark ? 0.70 : 0.94
     }
 
     var body: some View {
@@ -534,8 +652,32 @@ private struct SearchViewBackdrop: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 410)
                         .scaleEffect(1.04)
-                        .blur(radius: blurRadius)
                         .opacity(imageOpacity)
+                        .clipped()
+
+                    // Keep the food illustration crisp where it establishes
+                    // the screen identity. Only its lower edge is softened so
+                    // it can dissolve into the feed without competing with
+                    // the first controls.
+                    Image("SearchBackground")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 410)
+                        .scaleEffect(1.04)
+                        .blur(radius: reduceTransparency ? 0 : 10)
+                        .opacity(imageOpacity)
+                        .mask {
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .clear, location: 0.52),
+                                    .init(color: .black, location: 0.78),
+                                    .init(color: .black, location: 1)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        }
                         .clipped()
 
                     LinearGradient(
@@ -571,6 +713,7 @@ private struct GoalChip: View {
     let isSelected: Bool
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -598,7 +741,12 @@ private struct GoalChip: View {
             }
         }
         .picklyCardShadow()
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: isSelected)
+        // A critically damped selection response gives immediate feedback
+        // without making the content below the chip bounce or overshoot.
+        .animation(
+            reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 1),
+            value: isSelected
+        )
     }
 
     private var chipContent: some View {
@@ -624,11 +772,13 @@ private struct GoalChip: View {
     }
 }
 
-private struct LockedGoalSectionHeader: View {
+private struct GoalRecommendationsSectionHeader: View {
+    let showsPlusBadge: Bool
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("More for your goals")
+                Text("Better choices")
                     .font(.title3.bold())
                     .foregroundStyle(.primary)
                     .accessibilityAddTraits(.isHeader)
@@ -641,7 +791,9 @@ private struct LockedGoalSectionHeader: View {
 
             Spacer(minLength: 4)
 
-            PicklyPlusBadge()
+            if showsPlusBadge {
+                PicklyPlusBadge()
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -652,11 +804,11 @@ private struct MissingProductCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .center, spacing: 12) {
-                PicklyIconImage(systemName: "barcode.viewfinder", size: 18)
+            HStack(alignment: .center, spacing: 16) {
+                PicklyIconImage(systemName: "barcode.viewfinder", size: 28)
                     .foregroundStyle(PicklyColor.primary)
-                    .frame(width: 34, height: 34)
-                    .background(PicklyColor.mint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .frame(width: 56, height: 56)
+                    .background(PicklyColor.mint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Missing a product?")
@@ -668,68 +820,18 @@ private struct MissingProductCard: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-
-                Spacer(minLength: 6)
-
-                Text("Request product")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(PicklyColor.deepMarket)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.76)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(PicklyColor.primary.opacity(0.14), in: Capsule())
             }
-            .padding(14)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .picklyCardSurface(
-                cornerRadius: 18,
+                cornerRadius: 22,
                 fill: PicklyColor.card,
-                stroke: PicklyColor.stroke.opacity(0.58)
+                stroke: PicklyColor.stroke.opacity(0.42)
             )
         }
         .buttonStyle(PicklyPressableButtonStyle())
-    }
-}
-
-private struct PremiumBanner: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(alignment: .center, spacing: 14) {
-                PicklyIconImage(systemName: "sparkles", size: 22)
-                    // The badge keeps the same pastel fill in both appearances,
-                    // so its glyph must remain dark instead of following the
-                    // adaptive dark-mode foreground used by deepMarket.
-                    .foregroundStyle(PicklyColor.statusWarningForeground)
-                    .frame(width: 42, height: 42)
-                    .background(PicklyColor.brandLemon, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Get more from every scan")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.primary)
-
-                    Text("Compare products, find better alternatives and unlock deeper insights.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 4)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(PicklyColor.primary)
-                    .accessibilityHidden(true)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .picklyGlassCardSurface(cornerRadius: 20)
-        }
-        .buttonStyle(PicklyPressableButtonStyle())
-        .accessibilityLabel("Explore Premium. Get more from every scan.")
+        .accessibilityLabel("Missing a product?")
+        .accessibilityHint("Opens the product request form.")
     }
 }
 
@@ -753,17 +855,11 @@ private struct ProductRequestView: View {
             content
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Button(primaryActionTitle, action: primaryAction)
-                .font(.headline.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(PicklyColor.primary)
-                .picklyProminentButtonForeground()
+                .buttonStyle(PicklyRequestButtonStyle())
                 .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
                 .padding(.top, 12)
                 .padding(.bottom, 8)
-                .background(.regularMaterial)
-                .disabled(isSubmitting || (isSignedIn && !didSubmit && !canSubmit))
+                .disabled(!canPerformPrimaryAction)
             }
             .navigationTitle("Request product")
             .navigationBarTitleDisplayMode(.inline)
@@ -784,11 +880,11 @@ private struct ProductRequestView: View {
             ProgressView("Checking your account…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if didSubmit {
-            ContentUnavailableView(
-                "Request sent",
-                systemImage: "checkmark.circle.fill",
-                description: Text("Thanks. The product can now be reviewed for a future catalog update.")
-            )
+            ContentUnavailableView {
+                Label("Request sent", picklyIcon: "checkmark.circle", iconSize: 44)
+            } description: {
+                Text("Thanks. The product can now be reviewed for a future catalog update.")
+            }
         } else if isSignedIn {
             Form {
                 Section {
@@ -811,17 +907,21 @@ private struct ProductRequestView: View {
 
                 if let errorMessage {
                     Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                        Label(errorMessage, picklyIcon: "exclamationmark.circle", iconSize: 18)
                             .foregroundStyle(.red)
                     }
                 }
             }
         } else {
-            ContentUnavailableView(
-                "Sign in to send a request",
-                systemImage: "person.crop.circle.badge.exclamationmark",
-                description: Text("An account keeps product requests attributable and protected by Pickly's privacy rules.")
-            )
+            ContentUnavailableView {
+                Label(
+                    "Sign in to send a request",
+                    picklyIcon: "person.crop.circle.badge.exclamationmark",
+                    iconSize: 44
+                )
+            } description: {
+                Text("An account keeps product requests attributable and protected by Pickly's privacy rules.")
+            }
         }
     }
 
@@ -840,6 +940,12 @@ private struct ProductRequestView: View {
         if didSubmit { return "Done" }
         if !isSignedIn { return "Open Profile" }
         return isSubmitting ? "Sending…" : "Send request"
+    }
+
+    private var canPerformPrimaryAction: Bool {
+        guard !isSubmitting else { return false }
+        guard isSignedIn else { return true }
+        return didSubmit || canSubmit
     }
 
     private func primaryAction() {
@@ -929,8 +1035,7 @@ private struct HomeSeeAllButton: View {
                 Text(title)
                     .font(.system(size: 15, weight: .semibold))
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
+                PicklyIconImage(systemName: "chevron.right", size: 12)
             }
             .foregroundStyle(PicklyColor.primary)
             .frame(maxWidth: .infinity)
@@ -1027,11 +1132,49 @@ private struct GoalMatchesListView: View {
     }
 
     private var goalProducts: [Product] {
-        GroceryGoal.healthiestMatchingProducts(
-            in: catalog.products,
-            filter: selectedGoal,
+        catalog.goalProducts(
+            for: selectedGoal,
             preferredGoals: preferredGoals
         )
+    }
+
+    private var isLoadingGoal: Bool {
+        catalog.isLoadingGoalRecommendation(
+            for: selectedGoal,
+            preferredGoals: preferredGoals
+        )
+    }
+
+    private var goalError: String? {
+        catalog.goalRecommendationError(
+            for: selectedGoal,
+            preferredGoals: preferredGoals
+        )
+    }
+
+    private var goalSubtitle: String {
+        guard selectedGoal != .all,
+              let total = catalog.goalRecommendationTotal(
+                  for: selectedGoal,
+                  preferredGoals: preferredGoals
+              ),
+              total > 0 else {
+            return "Picked for your preferences"
+        }
+
+        return "Browsing \(total.formatted()) catalog products"
+    }
+
+    private var hasActiveFilters: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || selectedCategory != nil
+            || selectedBrand != nil
+            || minimumScore > 0
+            || dietaryFilter != .any
+    }
+
+    private var hasMoreSelectedGoal: Bool {
+        selectedGoal != .all && catalog.hasMoreGoalRecommendations(for: selectedGoal)
     }
 
     private var categoryOptions: [String] {
@@ -1086,7 +1229,7 @@ private struct GoalMatchesListView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                Text("Picked for your preferences")
+                Text(goalSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)
@@ -1106,14 +1249,48 @@ private struct GoalMatchesListView: View {
 
                 sortAndFilterBar
 
-                if filteredProducts.isEmpty {
+                if isLoadingGoal && goalProducts.isEmpty {
+                    ProgressView("Loading products…")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(20)
+                        .picklyCardSurface(cornerRadius: 22)
+                        .padding(.top, 8)
+                } else if filteredProducts.isEmpty {
                     HomeEmptyStateCard(
-                        title: goalProducts.isEmpty ? "No matches yet" : "No products found",
-                        message: goalProducts.isEmpty
-                            ? "Scan more products to find picks for your goals."
-                            : "Try another search or clear a filter.",
-                        actionTitle: goalProducts.isEmpty ? "Scan product" : nil,
-                        action: goalProducts.isEmpty ? onScanAnotherProduct : nil
+                        title: goalError == nil
+                            ? (goalProducts.isEmpty
+                                ? (hasMoreSelectedGoal ? "Still checking matches" : "No verified matches yet")
+                                : "No products found")
+                            : "Couldn't refresh matches",
+                        message: goalError
+                            ?? (goalProducts.isEmpty
+                                ? (hasMoreSelectedGoal
+                                    ? "The first catalog page had no complete, verified products. You can check the next page."
+                                    : "No catalog products are verified for this goal yet.")
+                                : "Try another search or clear a filter."),
+                        actionTitle: goalError == nil
+                            ? (goalProducts.isEmpty
+                                ? (hasMoreSelectedGoal ? "Load more" : "Scan product")
+                                : nil)
+                            : "Try again",
+                        action: goalError == nil
+                            ? (goalProducts.isEmpty
+                                ? (hasMoreSelectedGoal
+                                    ? {
+                                        Task {
+                                            await catalog.loadMoreGoalRecommendations(for: selectedGoal)
+                                        }
+                                    }
+                                    : onScanAnotherProduct)
+                                : nil)
+                            : {
+                                Task {
+                                    await catalog.retryGoalRecommendations(
+                                        for: selectedGoal == .all ? preferredGoals : [selectedGoal],
+                                        limit: 12
+                                    )
+                                }
+                            }
                     )
                     .padding(.top, 8)
                 } else {
@@ -1124,14 +1301,18 @@ private struct GoalMatchesListView: View {
                                 for: product,
                                 filter: selectedGoal,
                                 preferredGoals: preferredGoals
-                            )?.productReason ?? product.verdict
+                            )?.productReason ?? product.localizedVerdict
                         },
                         isSaved: { savedStore.isSaved($0) },
                         onToggleSave: { savedStore.toggle($0) },
                         accessibilityLabel: accessibilityLabel(for:),
-                        onSelect: { selectedProduct = $0 }
+                        onSelect: { product in
+                            selectedProduct = product
+                        }
                     )
                     .padding(.top, 2)
+
+                    paginationFooter
                 }
             }
             .padding(.horizontal, PicklyLayout.screenHorizontalPadding)
@@ -1166,13 +1347,40 @@ private struct GoalMatchesListView: View {
             )
             .presentationDetents([.medium, .large])
         }
-        .task(id: query) {
-            let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmedQuery.count >= 2 else { return }
+        .task(id: selectedGoal.id) {
+            await catalog.loadGoalRecommendations(
+                for: selectedGoal == .all ? preferredGoals : [selectedGoal],
+                limit: 12
+            )
+        }
+    }
 
-            try? await Task.sleep(for: .milliseconds(280))
-            guard !Task.isCancelled else { return }
-            await catalog.search(query: trimmedQuery)
+    @ViewBuilder
+    private var paginationFooter: some View {
+        if selectedGoal != .all, !hasActiveFilters {
+            if goalError != nil {
+                Button("Try loading more") {
+                    Task {
+                        await catalog.loadMoreGoalRecommendations(for: selectedGoal)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+            } else if isLoadingGoal {
+                ProgressView("Loading more products…")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 22)
+            } else if catalog.hasMoreGoalRecommendations(for: selectedGoal) {
+                Button("Load more products") {
+                    Task {
+                        await catalog.loadMoreGoalRecommendations(for: selectedGoal)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+            }
         }
     }
 
@@ -1185,13 +1393,13 @@ private struct GoalMatchesListView: View {
                     }
                 }
             } label: {
-                Label("Sort", systemImage: "arrow.up.arrow.down")
+                Label("Sort", picklyIcon: "arrow.up.arrow.down", iconSize: 16)
             }
 
             Button {
                 showFilters = true
             } label: {
-                Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
+                Label("Filters", picklyIcon: "line.3.horizontal.decrease.circle", iconSize: 16)
             }
 
             Spacer(minLength: 0)
@@ -1208,9 +1416,9 @@ private struct GoalMatchesListView: View {
 
     private func accessibilityLabel(for product: Product) -> String {
         if !product.isLimitedData, let score = product.score {
-            return "\(product.name), \(product.brand), \(product.verdict), score \(score)"
+            return "\(product.name), \(product.brand), \(product.localizedVerdict), \(PicklyCopy.localized("score")) \(score)"
         }
-        return "\(product.name), \(product.brand), Limited data"
+        return PicklyCopy.format("%@, %@, %@", product.name, product.brand, PicklyCopy.localized("Limited data"))
     }
 }
 
@@ -1347,19 +1555,21 @@ private struct RecentHistoryListView: View {
                         products: filteredProducts,
                         reasonProvider: { product in
                             if product.isLimitedData {
-                                return "Limited data"
+                                return PicklyCopy.localized("Limited data")
                             }
-                            return product.positives.first ?? product.verdict
+                            return product.positives.first ?? product.localizedVerdict
                         },
                         isSaved: { savedStore.isSaved($0) },
                         onToggleSave: { savedStore.toggle($0) },
                         accessibilityLabel: { product in
                             if !product.isLimitedData, let score = product.score {
-                                return "\(product.name), \(product.brand), \(product.verdict), score \(score)"
+                                return "\(product.name), \(product.brand), \(product.localizedVerdict), \(PicklyCopy.localized("score")) \(score)"
                             }
-                            return "\(product.name), \(product.brand), Limited data"
+                            return PicklyCopy.format("%@, %@, %@", product.name, product.brand, PicklyCopy.localized("Limited data"))
                         },
-                        onSelect: { selectedProduct = $0 }
+                        onSelect: { product in
+                            selectedProduct = product
+                        }
                     )
                 }
             }

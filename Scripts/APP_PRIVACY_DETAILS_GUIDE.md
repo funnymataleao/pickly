@@ -18,13 +18,14 @@ Apple спросит: **"Does your app collect data from this app?"**
 ✅ **Ответ: YES**
 
 Pickly и встроенные SDK собирают или передают для работы функции:
-- Email и User ID (для аккаунта Supabase)
+- Email и User ID (для Firebase Authentication и связанных функций аккаунта)
 - Name, если он предоставлен Apple или Google
 - Product Interactions (поисковые запросы и баркоды для поиска)
-- Verified subscription status для доступа к Pickly Plus
+- Локальная проверка verified subscription status через StoreKit для доступа к Pickly Plus; транзакции и purchase history не отправляются на сервер Pickly
+- Firebase Authentication 12.18.0 декларирует в bundled privacy manifest User ID (linked, App Functionality) и Other Diagnostic Data (not linked, Analytics). Tracking: No.
 - Google Sign-In 9.2.0 декларирует в bundled privacy manifest: Name, Email Address, Phone Number, User ID, Coarse Location, Device ID, Other Data Types и Other Usage Data. Часть типов используется для App Functionality, а User ID, Device ID, Other Data Types и Other Usage Data также декларируются для Analytics. Tracking: No.
 
-Sign in with Apple также отправляет одноразовый authorization code на сервер Pickly для обмена на provider refresh token. Refresh token хранится только на сервере как credential для отзыва Apple connection при удалении аккаунта; он не попадает в приложение и не используется для tracking.
+При удалении Apple-аккаунта пользователь повторно подтверждает личность через Sign in with Apple. Свежий одноразовый authorization code используется транзитно для отзыва Apple connection; Pickly не хранит долгоживущие Apple authorization codes или refresh tokens.
 
 ---
 
@@ -68,7 +69,7 @@ Sign in with Apple также отправляет одноразовый author
    - ✅ **Yes**
 
 2. **Is the User ID data linked to the user's identity?**
-   - ✅ **Yes** (это UUID пользователя в Supabase)
+   - ✅ **Yes** (это UUID пользователя в Firebase Authentication)
 
 3. **Do you or your third-party partners use User ID data for tracking purposes?**
    - ❌ **No**
@@ -121,7 +122,7 @@ Sign in with Apple также отправляет одноразовый author
    - ✅ **Yes**
 
 2. **Is the Product Interaction data linked to the user's identity?**
-   - ✅ **Yes** (обычный lookup не требует аккаунта, но отправленная заявка на отсутствующий продукт сохраняется с Supabase User ID)
+   - ✅ **Yes** (обычный lookup не требует аккаунта, но отправленная заявка на отсутствующий продукт сохраняется с Firebase User ID в Cloudflare)
 
 3. **Do you or your third-party partners use Product Interaction data for tracking purposes?**
    - ❌ **No**
@@ -132,13 +133,22 @@ Sign in with Apple также отправляет одноразовый author
 
 ### 🛒 Purchases
 
-**Выбери:** ✅ **Purchase History**
+**Не выбирай Purchase History для текущей версии.**
 
-- Collected: **Yes**
-- Linked to identity: **Yes**
+- StoreKit entitlement проверяется локально через `Transaction.currentEntitlements`.
+- Pickly не отправляет транзакции или историю покупок в Cloudflare/Firebase и не хранит их на своём сервере.
+- Payment card details Pickly не получает и не хранит.
+- Данные, которые обрабатывает Apple в рамках StoreKit и которые не передаются разработчику для длительного хранения, не являются collected data Pickly для App Privacy.
+
+### 🛠 Diagnostics
+
+**Выбери:** ✅ **Other Diagnostic Data**
+
+- Linked to identity: **No**
 - Tracking: **No**
-- Purpose: **App Functionality** (StoreKit entitlement открывает Pickly Plus)
-- Payment card details Pickly не получает и не хранит
+- Purpose: **Analytics**
+- Source: bundled privacy manifest Firebase Authentication 12.18.0
+- Не выбирай Crash Data или Performance Data: отдельный Firebase Crashlytics или другой crash-reporting SDK в target не подключён
 
 ---
 
@@ -154,7 +164,7 @@ Apple покажет список категорий. **НЕ выбирай** с
 ❌ **User Content** — приложение не содержит UGC
 ❌ **Browsing History** — не собираем
 ❌ **Search History** — не хранится как история поиска; запросы, которые нужны для каталога, передаются как Product Interaction и должны быть сверены с фактическим Release flow
-❌ **Diagnostics** — отдельный crash-reporting SDK не подключён; Google service usage раскрывается как Other Usage Data по bundled manifest
+❌ **Crash Data** и **Performance Data** — отдельный crash-reporting/performance SDK не подключён. При этом **Other Diagnostic Data нужно выбрать** из-за bundled manifest Firebase Authentication.
 
 ---
 
@@ -167,14 +177,14 @@ Apple покажет список категорий. **НЕ выбирай** с
 Не публикуй этот список автоматически. Сначала собери Release archive и проверь aggregated privacy report: third-party SDK privacy manifests являются частью ответственности разработчика. Ответы App Privacy, публичная Privacy Policy и текст внутри приложения должны описывать один и тот же фактический flow.
 
 **Ожидаемые категории для проверки:**
-- Email Address и User ID (linked, App Functionality)
+- Email Address (linked, App Functionality) и User ID (linked, App Functionality + Analytics)
 - Name, если его реально получает выбранный provider
 - Product Interaction (linked из-за account-scoped product requests)
-- Purchase History (linked, App Functionality)
 - Phone Number и Coarse Location (linked, App Functionality, No tracking; Google Sign-In SDK)
 - Device ID (linked, Analytics, No tracking; Google Sign-In SDK)
 - Other Data Types (linked, App Functionality + Analytics, No tracking; Google Sign-In SDK)
 - Other Usage Data (linked, Analytics, No tracking; Google Sign-In SDK)
+- Other Diagnostic Data (not linked, Analytics, No tracking; Firebase Authentication)
 
 **Data NOT Collected:**
 - ❌ Precise Location
@@ -184,6 +194,7 @@ Apple покажет список категорий. **НЕ выбирай** с
 - ❌ Financial Info
 - ❌ Browsing/Search History
 - ❌ Advertising Data
+- ❌ Purchase History (StoreKit-only, не передаётся на сервер Pickly)
 
 ---
 
@@ -195,28 +206,33 @@ Apple спросит: **"Do any third parties have access to data collected from
 
 **Укажи третьи стороны:**
 
-1. **Supabase**
-   - Purpose: Backend infrastructure, authentication, database
-   - Data shared: Email, User ID, Product searches
+1. **Firebase Authentication**
+   - Purpose: Optional authentication and account management
+   - Data shared: Email, User ID, provider name data, and unlinked Other Diagnostic Data declared by the SDK
 
-2. **Open Food Facts**
+2. **Cloudflare**
+   - Purpose: Product catalog and account-linked request storage
+   - Data shared: Product search requests, barcodes, and submitted product request details
+
+3. **Open Food Facts**
    - Purpose: Product information lookup
    - Data shared: Product barcodes (anonymous)
 
-3. **Google Sign-In** (если используется)
+4. **Google Sign-In** (если используется)
    - Purpose: Authentication
    - Data processed according to the bundled SDK manifest: Name, Email Address, Phone Number, User ID, Coarse Location, Device ID, Other Data Types, Other Usage Data
    - Tracking: No
 
-**Важно:** Укажи что все третьи стороны имеют собственные Privacy Policies и что данные используются только для функционала приложения.
+**Важно:** Укажи, что все третьи стороны имеют собственные Privacy Policies. Данные используются для App Functionality и для ограниченных Analytics purposes, которые прямо перечислены в bundled SDK privacy manifests; tracking и advertising не используются.
 
 ---
 
-## Шаг 6: Сохранить и опубликовать
+## Шаг 6: Сохранить черновик и сверить Release archive
 
 1. **Проверь всё еще раз**
-2. Нажми **Publish**
-3. App Privacy Details теперь видны в App Store Connect
+2. Сохрани все ответы в draft, но пока не нажимай **Publish**
+3. Собери Release archive и сверь aggregated privacy report с этим документом и публичной Privacy Policy
+4. Нажимай **Publish** только после этой сверки
 
 ---
 
@@ -229,7 +245,7 @@ Apple спросит: **"Do any third parties have access to data collected from
 Pickly не показывает рекламу и не использует advertising networks.
 
 ### ❌ Не добавляй рекламную аналитику
-В текущем Release нет Google Analytics, Firebase Analytics или рекламного SDK. Но для User ID, Device ID, Other Data Types и Other Usage Data нужно выбрать **Analytics**, потому что это прямо декларирует privacy manifest встроенного Google Sign-In SDK 9.2.0.
+В текущем target нет Google Analytics, Firebase Analytics или рекламного SDK. Но **Analytics** нужно выбрать для User ID, Device ID, Other Data Types и Other Usage Data из privacy manifest Google Sign-In 9.2.0, а также для unlinked Other Diagnostic Data из privacy manifest Firebase Authentication 12.18.0.
 
 ### ❌ НЕ выбирай "Search History"
 Поиск может передаваться каталогу для выполнения запроса, но Pickly не заявляет и не использует отдельную историю поиска или tracking-профиль. Сверь фактический Release data flow перед публикацией.
@@ -243,9 +259,10 @@ Pickly не показывает рекламу и не использует adv
 ✅ Email и User ID → упомянуты в Privacy Policy
 ✅ Name/provider data → упомянуты, если реально получаются
 ✅ Product searches и barcodes → упомянуты в Privacy Policy
-✅ Third parties (Supabase, Open Food Facts) → упомянуты в Privacy Policy
+✅ Third parties (Firebase Authentication, Cloudflare, Open Food Facts) → упомянуты в Privacy Policy
 ✅ StoreKit subscription status → упомянут в Privacy Policy
 ✅ Google Sign-In service data and limited SDK analytics → упомянуты в Privacy Policy
+✅ Firebase Authentication Other Diagnostic Data (unlinked analytics) → упомянуты в Privacy Policy
 
 ---
 
