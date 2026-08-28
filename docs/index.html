@@ -79,6 +79,16 @@
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
+
+        .link.coming-soon {
+            cursor: default;
+        }
+
+        .link.coming-soon:hover {
+            background: #667eea;
+            transform: none;
+            box-shadow: none;
+        }
         
         .link.secondary {
             background: transparent;
@@ -114,7 +124,7 @@
         <p>A calm, clear grocery scanner that helps you make better food choices quickly.</p>
         
         <div class="links">
-            <a href="https://apps.apple.com/app/pickly" class="link">Download on App Store</a>
+            <span class="link coming-soon">Coming soon on the App Store</span>
             <a href="privacy.html" class="link secondary">Privacy Policy</a>
             <a href="support.html" class="link secondary">Support</a>
         </div>
