@@ -31,10 +31,16 @@ Current App Store Connect state on August 28, 2026:
 1. Complete the monthly and annual product metadata and move both products to Ready to Submit.
 2. Verify English localizations and the approved prices.
 3. Add the app's Privacy Policy URL and Apple's Standard EULA in the subscription metadata.
-4. Have the Account Holder accept the current Apple Developer Program License Agreement.
-5. Verify agreements, banking, and tax status in App Store Connect.
-6. Add both subscriptions to the same first Review Submission as the app build.
-7. Test purchase, restore, renewal, cancellation, expiration, and billing retry in Sandbox/TestFlight.
+4. Add the same Terms of Use (EULA) URL as plain text in the app's App Description for every storefront localization. A link in the paywall, local StoreKit configuration, or subscription metadata alone does not satisfy this metadata requirement.
+5. Have the Account Holder accept the current Apple Developer Program License Agreement.
+6. Verify agreements, banking, and tax status in App Store Connect.
+7. Add both subscriptions to the same first Review Submission as the app build.
+8. Test purchase, restore, renewal, cancellation, expiration, and billing retry in Sandbox/TestFlight.
+
+## Canonical legal links
+
+- Terms of Use (Apple Standard EULA): <https://www.apple.com/legal/internet-services/itunes/dev/stdeula/>
+- Privacy Policy: <https://funnymataleao.github.io/pickly/privacy.html>
 
 Do not put an App Store Connect API key or a private signing key in the app. A
 server-side entitlement table and App Store Server Notifications should be

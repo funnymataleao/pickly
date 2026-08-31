@@ -2287,6 +2287,10 @@ final class PicklyTests: XCTestCase {
             SubscriptionStore.managementURL.absoluteString,
             "https://apps.apple.com/account/subscriptions"
         )
+        XCTAssertEqual(
+            SubscriptionStore.standardEULAURL.absoluteString,
+            "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+        )
     }
 
     func testPublishedScoringMethodologyMatchesTheBaselineCalculation() {

@@ -546,7 +546,7 @@ struct PicklyPaywallView: View {
 
                 Link(
                     "Apple Standard EULA",
-                    destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
+                    destination: SubscriptionStore.standardEULAURL
                 )
             }
             .font(.footnote.weight(.semibold))

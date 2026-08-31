@@ -64,6 +64,11 @@ Core flow доступен без аккаунта. Если для дополн
   - [ ] Age Rating настроен
   - [ ] Copyright заполнен
 
+- [ ] **App Description (каждая локализация)**
+  - [ ] В конце описания есть рабочая ссылка на Terms of Use (EULA)
+  - [ ] В описании также указана рабочая ссылка на Privacy Policy
+  - [ ] Не полагаться только на ссылку внутри paywall, `Config/PicklySubscriptions.storekit` или metadata подписки: Apple проверяет EULA именно в App Description
+
 - [ ] **App Privacy**
   - [x] Email Address настроен
   - [x] Name настроен
@@ -206,6 +211,12 @@ Privacy-first:
 • Optional account for account access
 • No advertising identifiers
 • No location tracking
+
+Terms of Use (EULA):
+https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+
+Privacy Policy:
+https://funnymataleao.github.io/pickly/privacy.html
 ```
 
 **Keywords (100 chars):**

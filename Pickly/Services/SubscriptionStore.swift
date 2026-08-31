@@ -66,6 +66,7 @@ final class SubscriptionStore: ObservableObject {
 
     static let productIDs = Plan.allCases.map(\.productID)
     static let managementURL = URL(string: "https://apps.apple.com/account/subscriptions")!
+    static let standardEULAURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
 
     @Published private(set) var products: [StoreKit.Product] = []
     @Published private(set) var isPlus = false
