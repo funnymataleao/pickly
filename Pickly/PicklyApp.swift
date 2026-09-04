@@ -315,8 +315,13 @@ private extension Product {
         imageName: "takeoutbag.and.cup.and.straw.fill",
         ingredients: ["Wheat flour", "Sugar", "Cocoa butter"],
         nutrition: Nutrition(
+            energyKcal100g: 486,
+            energyKJ100g: 2_034,
+            fat100g: 23,
+            carbohydrates100g: 62,
             sugars100g: 34,
             salt100g: 0.8,
+            sodium100g: 0.32,
             saturatedFat100g: 14,
             proteins100g: 5,
             fiber100g: 2
@@ -327,10 +332,19 @@ private extension Product {
         reasons: ["Some protein per 100g"],
         warnings: ["High sugar level per 100g", "High saturated fat level per 100g"],
         positives: [],
-        forYouNotes: [],
+        forYouNotes: ["May not be the best choice if you're reducing sugar"],
         alternativeIDs: [],
         confidence: "Medium",
-        source: .openFoodFacts
+        source: .mock,
+        facts: Facts(
+            quantity: "180 g",
+            servingSize: "30 g",
+            nutritionBasis: .per100g,
+            allergens: ["en:milk", "en:wheat"],
+            traces: ["en:nuts"],
+            additives: ["en:e322", "en:e500"],
+            source: .mock
+        )
     )
 }
 #endif

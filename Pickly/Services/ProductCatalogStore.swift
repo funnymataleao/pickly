@@ -37,6 +37,7 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
     private var relatedProductIDsByCategory: [String: [String]] = [:]
     private var loadedGoalQueries = Set<GroceryGoal>()
     private var goalLoadTasks: [GroceryGoal: Task<Void, Never>] = [:]
+    private var attemptedFactEnrichmentBarcodes = Set<String>()
 
     var isLoadingGoalRecommendations: Bool {
         !loadingGoalRecommendations.isEmpty
@@ -195,7 +196,9 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
 
     func fetchProduct(barcode: String) async throws -> Product {
         if let localProduct = products.first(where: { $0.barcode == barcode }) {
-            return localProduct
+            let enrichedProduct = await enrichFactsIfNeeded(for: localProduct)
+            merge([enrichedProduct])
+            return enrichedProduct
         }
 
         guard remoteEnabled else {
@@ -204,8 +207,9 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
 
         do {
             if let remoteProduct = try await catalogService.fetchProduct(barcode: barcode) {
-                merge([remoteProduct])
-                return remoteProduct
+                let enrichedProduct = await enrichFactsIfNeeded(for: remoteProduct)
+                merge([enrichedProduct])
+                return enrichedProduct
             }
         } catch {
             // A cache miss or a temporary catalog failure falls back to Open Food Facts.
@@ -214,6 +218,29 @@ final class ProductCatalogStore: ObservableObject, ProductService, ProductLookup
         let fetchedProduct = try await openFoodFactsService.fetchProduct(barcode: barcode)
         merge([fetchedProduct])
         return fetchedProduct
+    }
+
+    private func enrichFactsIfNeeded(for product: Product) async -> Product {
+        guard
+            remoteEnabled,
+            product.source != .mock,
+            attemptedFactEnrichmentBarcodes.insert(product.barcode).inserted
+        else {
+            return product
+        }
+
+        do {
+            let openFoodFactsProduct = try await openFoodFactsService.fetchProduct(
+                barcode: product.barcode
+            )
+            return product.mergingCatalogData(from: openFoodFactsProduct)
+        } catch is CancellationError {
+            return product
+        } catch {
+            // The curated catalog remains usable when community metadata is
+            // unavailable or the barcode has no Open Food Facts record.
+            return product
+        }
     }
 
     func alternatives(for product: Product) -> [Product] {

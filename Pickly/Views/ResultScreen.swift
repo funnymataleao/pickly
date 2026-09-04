@@ -34,6 +34,10 @@ struct ResultScreen: View {
         product.isLimitedData || product.name == "Unknown product"
     }
 
+    private var personalizedNotes: [String] {
+        product.forYouMessages(preferences: preferences)
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             ScrollViewReader { proxy in
@@ -57,6 +61,14 @@ struct ResultScreen: View {
                             visibleCount: visibleInsights.count
                         )
 
+                        if !product.quickFacts.isEmpty {
+                            ProductFactsOverview(facts: product.quickFacts)
+                        }
+
+                        if !personalizedNotes.isEmpty {
+                            ForYouSection(notes: personalizedNotes)
+                        }
+
                         AlternativesResultSection(
                             product: product,
                             selection: alternativeSelection,
@@ -78,6 +90,10 @@ struct ResultScreen: View {
 
                         WatchOutsSection(warnings: product.warnings)
 
+                        if product.facts.hasIngredientSafetyDetails {
+                            IngredientSafetySection(facts: product.facts)
+                        }
+
                         if !product.ingredients.isEmpty {
                             IngredientsSection(ingredients: product.ingredientAnalyses)
                         }
@@ -86,7 +102,11 @@ struct ResultScreen: View {
                             DataConfidenceCard()
                         }
 
-                        NutritionSummary(product: product)
+                        if !product.nutritionFacts.isEmpty {
+                            NutritionSummary(product: product)
+                        }
+
+                        ProductDataSourceCard(product: product)
 
                         ScoringMethodologyLinkCard()
 

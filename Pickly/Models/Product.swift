@@ -22,6 +22,86 @@ nonisolated struct DietaryAttributes: Codable, Hashable, Sendable {
 }
 
 nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
+    enum NutritionBasis: String, Codable, Hashable, Sendable {
+        case per100g
+        case per100ml
+        case perServing
+        case unknown
+    }
+
+    struct Facts: Hashable, Codable, Sendable {
+        var quantity: String?
+        var servingSize: String?
+        var nutritionBasis: NutritionBasis
+        var allergens: [String]
+        var traces: [String]
+        var additives: [String]
+        var labels: [String]
+        var countries: [String]
+        var completeness: Double?
+        var lastUpdatedAt: Date?
+        var source: ProductSource
+
+        init(
+            quantity: String? = nil,
+            servingSize: String? = nil,
+            nutritionBasis: NutritionBasis = .unknown,
+            allergens: [String] = [],
+            traces: [String] = [],
+            additives: [String] = [],
+            labels: [String] = [],
+            countries: [String] = [],
+            completeness: Double? = nil,
+            lastUpdatedAt: Date? = nil,
+            source: ProductSource = .unknown
+        ) {
+            self.quantity = quantity
+            self.servingSize = servingSize
+            self.nutritionBasis = nutritionBasis
+            self.allergens = allergens
+            self.traces = traces
+            self.additives = additives
+            self.labels = labels
+            self.countries = countries
+            self.completeness = completeness
+            self.lastUpdatedAt = lastUpdatedAt
+            self.source = source
+        }
+
+        static let empty = Facts()
+
+        var hasProductDetails: Bool {
+            quantity != nil || servingSize != nil
+        }
+
+        var hasIngredientSafetyDetails: Bool {
+            !allergens.isEmpty || !traces.isEmpty || !additives.isEmpty
+        }
+
+        func merging(with incoming: Facts) -> Facts {
+            Facts(
+                quantity: incoming.quantity ?? quantity,
+                servingSize: incoming.servingSize ?? servingSize,
+                nutritionBasis: incoming.nutritionBasis == .unknown
+                    ? nutritionBasis
+                    : incoming.nutritionBasis,
+                allergens: Self.unique(allergens + incoming.allergens),
+                traces: Self.unique(traces + incoming.traces),
+                additives: Self.unique(additives + incoming.additives),
+                labels: Self.unique(labels + incoming.labels),
+                countries: Self.unique(countries + incoming.countries),
+                completeness: incoming.completeness ?? completeness,
+                lastUpdatedAt: incoming.lastUpdatedAt ?? lastUpdatedAt,
+                source: incoming.source == .unknown ? source : incoming.source
+            )
+        }
+
+        private static func unique(_ values: [String]) -> [String] {
+            var seen = Set<String>()
+            return values.filter { seen.insert($0.lowercased()).inserted }
+        }
+    }
+
     struct SugarAssessment: Hashable, Sendable {
         let value: Double?
         let label: String
@@ -30,33 +110,53 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
     }
 
     struct Nutrition: Hashable, Codable, Sendable {
+        var energyKcal100g: Double?
+        var energyKJ100g: Double?
+        var fat100g: Double?
+        var carbohydrates100g: Double?
         var sugars100g: Double?
         var addedSugars100g: Double?
         var salt100g: Double?
+        var sodium100g: Double?
         var saturatedFat100g: Double?
         var proteins100g: Double?
         var fiber100g: Double?
 
         init(
+            energyKcal100g: Double? = nil,
+            energyKJ100g: Double? = nil,
+            fat100g: Double? = nil,
+            carbohydrates100g: Double? = nil,
             sugars100g: Double? = nil,
             addedSugars100g: Double? = nil,
             salt100g: Double? = nil,
+            sodium100g: Double? = nil,
             saturatedFat100g: Double? = nil,
             proteins100g: Double? = nil,
             fiber100g: Double? = nil
         ) {
+            self.energyKcal100g = energyKcal100g
+            self.energyKJ100g = energyKJ100g
+            self.fat100g = fat100g
+            self.carbohydrates100g = carbohydrates100g
             self.sugars100g = sugars100g
             self.addedSugars100g = addedSugars100g
             self.salt100g = salt100g
+            self.sodium100g = sodium100g
             self.saturatedFat100g = saturatedFat100g
             self.proteins100g = proteins100g
             self.fiber100g = fiber100g
         }
 
         private enum CodingKeys: String, CodingKey {
+            case energyKcal100g
+            case energyKJ100g
+            case fat100g
+            case carbohydrates100g
             case sugars100g
             case addedSugars100g
             case salt100g
+            case sodium100g
             case saturatedFat100g
             case proteins100g
             case fiber100g
@@ -65,9 +165,14 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             self.init(
+                energyKcal100g: try container.decodeIfPresent(Double.self, forKey: .energyKcal100g),
+                energyKJ100g: try container.decodeIfPresent(Double.self, forKey: .energyKJ100g),
+                fat100g: try container.decodeIfPresent(Double.self, forKey: .fat100g),
+                carbohydrates100g: try container.decodeIfPresent(Double.self, forKey: .carbohydrates100g),
                 sugars100g: try container.decodeIfPresent(Double.self, forKey: .sugars100g),
                 addedSugars100g: try container.decodeIfPresent(Double.self, forKey: .addedSugars100g),
                 salt100g: try container.decodeIfPresent(Double.self, forKey: .salt100g),
+                sodium100g: try container.decodeIfPresent(Double.self, forKey: .sodium100g),
                 saturatedFat100g: try container.decodeIfPresent(Double.self, forKey: .saturatedFat100g),
                 proteins100g: try container.decodeIfPresent(Double.self, forKey: .proteins100g),
                 fiber100g: try container.decodeIfPresent(Double.self, forKey: .fiber100g)
@@ -206,6 +311,7 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
     let confidence: String
     let dietary: DietaryAttributes
     let source: ProductSource
+    let facts: Facts
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -230,6 +336,7 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         case confidence
         case dietary
         case source
+        case facts
     }
 
     init(from decoder: Decoder) throws {
@@ -256,6 +363,7 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         self.confidence = try container.decode(String.self, forKey: .confidence)
         self.dietary = try container.decodeIfPresent(DietaryAttributes.self, forKey: .dietary) ?? .unknown
         self.source = try container.decodeIfPresent(ProductSource.self, forKey: .source) ?? .unknown
+        self.facts = try container.decodeIfPresent(Facts.self, forKey: .facts) ?? .empty
     }
 
     init(
@@ -280,7 +388,8 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         alternativeIDs: [String],
         confidence: String,
         dietary: DietaryAttributes = .unknown,
-        source: ProductSource = .unknown
+        source: ProductSource = .unknown,
+        facts: Facts = .empty
     ) {
         self.id = id
         self.barcode = barcode
@@ -304,6 +413,7 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         self.confidence = confidence
         self.dietary = dietary
         self.source = source
+        self.facts = facts
     }
 
     var isLimitedData: Bool {
@@ -345,7 +455,8 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
             alternativeIDs: alternativeIDs,
             confidence: confidence,
             dietary: dietary,
-            source: source
+            source: source,
+            facts: facts
         )
     }
 
@@ -372,7 +483,8 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
             alternativeIDs: alternativeIDs,
             confidence: confidence,
             dietary: dietary,
-            source: source
+            source: source,
+            facts: facts
         )
     }
 
@@ -384,9 +496,14 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
         let scoringProduct = incomingIsCurated || !existingIsCurated ? incoming : self
         let descriptiveProduct = existingIsCurated && !incomingIsCurated ? self : incoming
         let mergedNutrition = Nutrition(
+            energyKcal100g: incoming.nutrition.energyKcal100g ?? nutrition.energyKcal100g,
+            energyKJ100g: incoming.nutrition.energyKJ100g ?? nutrition.energyKJ100g,
+            fat100g: incoming.nutrition.fat100g ?? nutrition.fat100g,
+            carbohydrates100g: incoming.nutrition.carbohydrates100g ?? nutrition.carbohydrates100g,
             sugars100g: incoming.nutrition.sugars100g ?? nutrition.sugars100g,
             addedSugars100g: incoming.nutrition.addedSugars100g ?? nutrition.addedSugars100g,
             salt100g: incoming.nutrition.salt100g ?? nutrition.salt100g,
+            sodium100g: incoming.nutrition.sodium100g ?? nutrition.sodium100g,
             saturatedFat100g: incoming.nutrition.saturatedFat100g ?? nutrition.saturatedFat100g,
             proteins100g: incoming.nutrition.proteins100g ?? nutrition.proteins100g,
             fiber100g: incoming.nutrition.fiber100g ?? nutrition.fiber100g
@@ -426,7 +543,8 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
             alternativeIDs: mergedAlternativeIDs,
             confidence: scoringProduct.confidence,
             dietary: mergedDietary,
-            source: scoringProduct.source
+            source: scoringProduct.source,
+            facts: facts.merging(with: incoming.facts)
         )
     }
 
@@ -553,7 +671,8 @@ nonisolated struct Product: Identifiable, Hashable, Codable, Sendable {
             alternativeIDs: alternativeIDs,
             confidence: confidence,
             dietary: dietary,
-            source: source
+            source: source,
+            facts: facts
         )
     }
 }

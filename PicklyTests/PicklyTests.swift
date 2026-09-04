@@ -50,6 +50,115 @@ final class PicklyTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: PicklyLanguageSelection.storageKey), "system")
     }
 
+    func testResultFactsLocalizationCatalogCoversEveryShippedLanguage() throws {
+        let repositoryURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let catalogURL = repositoryURL
+            .appendingPathComponent("Pickly")
+            .appendingPathComponent("Localizable.xcstrings")
+        let data = try Data(contentsOf: catalogURL)
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+        let expectedLocales = Set(PicklyLanguage.allCases.map(\.localeIdentifier))
+        let requiredKeys = [
+            "Additives: %d",
+            "Allergens & additives",
+            "Always check the package. Community data may be incomplete.",
+            "At a glance",
+            "Basis not specified",
+            "Carbohydrates",
+            "Contains",
+            "Data source",
+            "Energy",
+            "Energy (kJ)",
+            "May contain",
+            "Package",
+            "Per 100 g",
+            "Per 100 ml",
+            "Per serving",
+            "Pickly catalog",
+            "Product data can change. Check the package when a detail matters to you.",
+            "Sample data",
+            "Serving",
+            "Source record completeness: %d%%",
+            "Source updated: %@",
+            "Total fat",
+            "View source record",
+            "Milk",
+            "Tree nuts",
+            "Peanuts",
+            "Gluten",
+            "Wheat",
+            "Eggs",
+            "Soy",
+            "Fish",
+            "Crustaceans",
+            "Molluscs",
+            "Celery",
+            "Mustard",
+            "Sesame",
+            "Sulphites",
+            "Lupin"
+        ]
+        let requiredFormatTokens = [
+            "Additives: %d": ["%d"],
+            "Source record completeness: %d%%": ["%d", "%%"],
+            "Source updated: %@": ["%@"]
+        ]
+
+        for key in requiredKeys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing key: \(key)")
+            let localizations = try XCTUnwrap(
+                entry["localizations"] as? [String: Any],
+                "Missing localizations: \(key)"
+            )
+            XCTAssertEqual(Set(localizations.keys), expectedLocales, "Incomplete locales: \(key)")
+
+            for locale in expectedLocales {
+                let localization = try XCTUnwrap(
+                    localizations[locale] as? [String: Any],
+                    "Missing \(locale): \(key)"
+                )
+                let unit = try XCTUnwrap(
+                    localization["stringUnit"] as? [String: Any],
+                    "Missing string unit for \(locale): \(key)"
+                )
+                XCTAssertEqual(unit["state"] as? String, "translated")
+                let value = try XCTUnwrap(unit["value"] as? String)
+                XCTAssertFalse(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                for token in requiredFormatTokens[key] ?? [] {
+                    XCTAssertTrue(
+                        value.contains(token),
+                        "Missing format token \(token) for \(locale): \(key)"
+                    )
+                }
+            }
+        }
+    }
+
+    func testCustomLocalizationWrapperResolvesRuntimeKeysFromExplicitLocale() {
+        XCTAssertEqual(
+            PicklyCopy.localized("Milk", locale: Locale(identifier: "fr")),
+            "Lait"
+        )
+        XCTAssertEqual(
+            PicklyCopy.localized("Tree nuts", locale: Locale(identifier: "pt-PT")),
+            "Frutos de casca rija"
+        )
+        XCTAssertEqual(
+            PicklyCopy.format(
+                "Additives: %d",
+                locale: Locale(identifier: "de"),
+                2
+            ),
+            "Zusatzstoffe: 2"
+        )
+    }
+
     func testPortugueseAliasKeepsOpenFoodFactsLanguageAndMarket() {
         let context = PicklyLocaleContext(language: .ptPT, regionCode: "BR")
 
@@ -111,6 +220,15 @@ final class PicklyTests: XCTestCase {
             .attention
         )
         XCTAssertEqual(ProductCardCopy.reasonTone("Limited data"), .neutral)
+    }
+
+    func testForYouKeepsVerifiedScoreNotesWithoutEnabledPreferences() {
+        let product = MockProductService().products[0]
+
+        XCTAssertEqual(
+            product.forYouMessages(preferences: .prototype),
+            product.forYouNotes
+        )
     }
 
     func testGoalCardLabelsStayAlignedAcrossSurfaces() {
@@ -416,6 +534,85 @@ final class PicklyTests: XCTestCase {
         XCTAssertEqual(product.categoryTags, ["en:ketchup"])
         XCTAssertEqual(ProductFamily.classify(product), .ketchup)
         XCTAssertEqual(product.displayCategoryName, "Ketchup")
+    }
+
+    func testOpenFoodFactsV36MapsStructuredNutritionAndProductFacts() async throws {
+        OpenFoodFactsURLProtocol.reset()
+        defer { OpenFoodFactsURLProtocol.reset() }
+
+        let nutrients: [String: Any] = [
+            "energy-kcal": ["value": 120, "unit": "kcal", "source": "manufacturer"],
+            "energy-kj": ["value": 502, "unit": "kJ", "source": "manufacturer"],
+            "fat": ["value": 4.5, "unit": "g", "source": "manufacturer"],
+            "carbohydrates": ["value": 16, "unit": "g", "source": "manufacturer"],
+            "sugars": ["value": 3.2, "unit": "g", "source": "manufacturer"],
+            "added-sugars": ["value": 1.5, "unit": "g", "source": "packaging"],
+            "salt": ["value": 0.7, "unit": "g", "source": "manufacturer"],
+            "sodium": ["value": 280, "unit": "mg", "source": "manufacturer"],
+            "saturated-fat": ["value": 1.1, "unit": "g", "source": "manufacturer"],
+            "proteins": ["value": 5.4, "unit": "g", "source": "manufacturer"],
+            "fiber": ["value": 8.8, "unit": "g", "source": "estimate", "modifier": "~"]
+        ]
+        let productFixture: [String: Any] = [
+            "code": "3017620422003",
+            "product_name": "Structured tomato soup",
+            "product_name_en": "Structured tomato soup",
+            "lang": "en",
+            "brands": "Fixture Brand",
+            "categories": "Soups, Tomato soups",
+            "categories_tags": ["en:tomato-soups"],
+            "quantity": "500 ml",
+            "serving_size": "250 ml",
+            "ingredients": [["id": "en:tomato", "text": "Tomato"]],
+            "nutrition": [
+                "aggregated_set": [
+                    "per": "100ml",
+                    "nutrients": nutrients
+                ]
+            ],
+            "additives_tags": ["en:e330"],
+            "labels_tags": ["en:vegetarian"],
+            "allergens_tags": ["en:milk"],
+            "traces_tags": ["en:celery"],
+            "countries_tags": ["en:portugal"],
+            "completeness": 0.82,
+            "last_modified_t": 1_720_000_000
+        ]
+        OpenFoodFactsURLProtocol.responseData = try JSONSerialization.data(
+            withJSONObject: [
+                "code": "3017620422003",
+                "status": "success",
+                "product": productFixture
+            ]
+        )
+
+        let product = try await OpenFoodFactsService(session: makeOpenFoodFactsSession())
+            .fetchProduct(barcode: "3017620422003")
+
+        XCTAssertEqual(product.nutrition.energyKcal100g, 120)
+        XCTAssertEqual(product.nutrition.energyKJ100g, 502)
+        XCTAssertEqual(product.nutrition.fat100g, 4.5)
+        XCTAssertEqual(product.nutrition.carbohydrates100g, 16)
+        XCTAssertEqual(product.nutrition.addedSugars100g, 1.5)
+        XCTAssertEqual(try XCTUnwrap(product.nutrition.sodium100g), 0.28, accuracy: 0.000_1)
+        XCTAssertNil(product.nutrition.fiber100g, "Estimated nutrients must not affect Pickly scoring")
+        XCTAssertEqual(product.facts.quantity, "500 ml")
+        XCTAssertEqual(product.facts.servingSize, "250 ml")
+        XCTAssertEqual(product.facts.nutritionBasis, .per100ml)
+        XCTAssertEqual(product.facts.allergens, ["en:milk"])
+        XCTAssertEqual(product.facts.traces, ["en:celery"])
+        XCTAssertEqual(product.facts.additives, ["en:e330"])
+        XCTAssertEqual(product.facts.completeness, 0.82)
+        XCTAssertEqual(product.facts.lastUpdatedAt, Date(timeIntervalSince1970: 1_720_000_000))
+        XCTAssertEqual(product.facts.source, .openFoodFacts)
+        XCTAssertTrue(product.nutritionFacts.map(\.id).contains("carbohydrates"))
+        XCTAssertTrue(product.nutritionFacts.map(\.id).contains("total-fat"))
+
+        let request = try XCTUnwrap(OpenFoodFactsURLProtocol.requestedURLs.first)
+        let parsedRequest = OpenFoodFactsRequest(url: request)
+        XCTAssertEqual(parsedRequest.path, "/api/v3.6/product/3017620422003.json")
+        XCTAssertTrue(parsedRequest.query["fields"]?.contains("nutrition") == true)
+        XCTAssertTrue(parsedRequest.query["fields"]?.contains("serving_size") == true)
     }
 
     func testMislabeledFrenchEnglishNameUsesVerifiedGenericEnglishName() async throws {
@@ -1179,7 +1376,16 @@ final class PicklyTests: XCTestCase {
                 glutenFree: .unknown,
                 lactoseFree: .unknown
             ),
-            source: .openFoodFacts
+            source: .openFoodFacts,
+            facts: Product.Facts(
+                quantity: "350 g",
+                servingSize: "30 g",
+                nutritionBasis: .per100g,
+                allergens: ["en:nuts"],
+                additives: ["en:e322"],
+                completeness: 0.76,
+                source: .openFoodFacts
+            )
         )
 
         let curatedThenOFF = curated.mergingCatalogData(from: openFoodFacts)
@@ -1191,6 +1397,10 @@ final class PicklyTests: XCTestCase {
             XCTAssertEqual(Set(merged.alternativeIDs), ["curated-alternative", "off-alternative"])
             XCTAssertEqual(merged.dietary.vegetarian, .confirmed)
             XCTAssertEqual(merged.dietary.vegan, .confirmed)
+            XCTAssertEqual(merged.facts.quantity, "350 g")
+            XCTAssertEqual(merged.facts.allergens, ["en:nuts"])
+            XCTAssertEqual(merged.facts.additives, ["en:e322"])
+            XCTAssertEqual(merged.facts.source, .openFoodFacts)
         }
     }
 
@@ -1572,7 +1782,13 @@ final class PicklyTests: XCTestCase {
             lactoseFree: true
         )
 
-        XCTAssertTrue(product.forYouMessages(preferences: preferences).isEmpty)
+        let messages = product.forYouMessages(preferences: preferences)
+        XCTAssertEqual(messages, product.forYouNotes)
+        XCTAssertFalse(messages.contains { message in
+            ["vegetarian", "vegan", "gluten", "lactose"].contains { term in
+                message.localizedCaseInsensitiveContains(term)
+            }
+        })
     }
 
     func testRelatedProductQueryUsesNameForGenericGroceryCategory() {
@@ -2832,7 +3048,8 @@ final class PicklyTests: XCTestCase {
         declaredIngredientCount: Int? = nil,
         alternativeIDs: [String] = [],
         dietary: DietaryAttributes = .unknown,
-        source: ProductSource = .unknown
+        source: ProductSource = .unknown,
+        facts: Product.Facts = .empty
     ) -> Product {
         Product(
             id: id,
@@ -2861,7 +3078,8 @@ final class PicklyTests: XCTestCase {
             alternativeIDs: alternativeIDs,
             confidence: "High",
             dietary: dietary,
-            source: source
+            source: source,
+            facts: facts
         )
     }
 

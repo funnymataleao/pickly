@@ -12,7 +12,25 @@ nonisolated enum PicklyCopy {
     }
 
     static func localized(_ key: String, locale: Locale? = nil) -> String {
-        String(localized: String.LocalizationValue(key), locale: locale ?? appLocale)
+        let resolvedLocale = locale ?? appLocale
+        let language = PicklyLanguage.from(identifier: resolvedLocale.identifier) ?? .en
+
+        guard let localizationURL = Bundle.main.url(
+            forResource: language.localeIdentifier,
+            withExtension: "lproj"
+        ), let localizationBundle = Bundle(url: localizationURL) else {
+            return Bundle.main.localizedString(
+                forKey: key,
+                value: key,
+                table: "Localizable"
+            )
+        }
+
+        return localizationBundle.localizedString(
+            forKey: key,
+            value: key,
+            table: "Localizable"
+        )
     }
 
     static func format(

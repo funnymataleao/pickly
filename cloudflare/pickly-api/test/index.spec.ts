@@ -705,21 +705,24 @@ describe("Pickly API", () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(3);
 	});
 
-	it("returns exact Search-a-licious barcode metadata and caches it by language", async () => {
-		const upstreamBodies: Array<Record<string, unknown>> = [];
-		const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
-			const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-			upstreamBodies.push(body);
+	it("returns exact v3.6 barcode metadata and caches it by language", async () => {
+		const upstreamURLs: URL[] = [];
+		const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+			upstreamURLs.push(fetchedURL(input));
 			return new Response(JSON.stringify({
-				count: 1,
-				hits: [{
+				code: "8715700112596",
+				status: "success",
+				product: {
 					code: "8715700112596",
 					product_name: { main: "Ketchup zéro sel ajouté", en: "Nested Ketchup" },
 					product_name_en: "Tomato Ketchup 70%",
 					product_name_pt: "Ketchup de tomate 70%",
 					countries_tags: ["en:france", "en:spain"],
 					brands: ["Heinz"],
-				}],
+					quantity: "500 g",
+					serving_size: "15 g",
+					nutrition: { aggregated_set: { per: "100g", nutrients: {} } },
+				},
 			}), { headers: { "Content-Type": "application/json" } });
 		});
 
@@ -736,9 +739,11 @@ describe("Pickly API", () => {
 				product_name: "Tomato Ketchup 70%",
 				product_name_en: "Tomato Ketchup 70%",
 				product_name_pt: "Ketchup de tomate 70%",
-				countries_tags: ["en:france", "en:spain"],
-				brands: "Heinz",
-			},
+					countries_tags: ["en:france", "en:spain"],
+					brands: "Heinz",
+					quantity: "500 g",
+					serving_size: "15 g",
+				},
 		});
 		await waitOnExecutionContext(first.ctx);
 
@@ -757,21 +762,26 @@ describe("Pickly API", () => {
 		await waitOnExecutionContext(third.ctx);
 
 		expect(fetchSpy).toHaveBeenCalledTimes(2);
-		expect(upstreamBodies[0].q).toBe('code:"8715700112596"');
-		expect(upstreamBodies[0].page_size).toBe(1);
-		expect(upstreamBodies[0].langs).toEqual(["en"]);
-		expect(upstreamBodies[1].langs).toEqual(["en", "pt"]);
-		expect(upstreamBodies[0].fields).toEqual(expect.arrayContaining([
+		expect(upstreamURLs[0].pathname).toBe("/api/v3.6/product/8715700112596.json");
+		expect(upstreamURLs[0].searchParams.get("lc")).toBe("en");
+		expect(upstreamURLs[1].searchParams.get("lc")).toBe("pt");
+		expect(upstreamURLs[1].searchParams.get("tags_lc")).toBe("pt");
+		expect(upstreamURLs[0].searchParams.get("product_type")).toBe("food");
+		const fields = upstreamURLs[0].searchParams.get("fields")?.split(",") ?? [];
+		expect(fields).toEqual(expect.arrayContaining([
 			"product_name_en",
 			"product_name_pt",
 			"generic_name_en",
 			"countries_tags",
+			"nutrition",
+			"quantity",
+			"serving_size",
 		]));
 	});
 
 	it("returns 404 for absent exact OFF metadata and validates barcode and language", async () => {
 		const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
-			JSON.stringify({ count: 0, hits: [] }),
+			JSON.stringify({ code: "12345678", status: "failure" }),
 			{ headers: { "Content-Type": "application/json" } },
 		));
 

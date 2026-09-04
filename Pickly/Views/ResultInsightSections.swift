@@ -182,6 +182,232 @@ struct ForYouSection: View {
     }
 }
 
+struct ProductFactsOverview: View {
+    let facts: [ProductQuickFact]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionTitle(title: PicklyCopy.localized("At a glance"), systemImage: "text.magnifyingglass")
+
+            VStack(spacing: 0) {
+                ForEach(Array(facts.enumerated()), id: \.element.id) { index, fact in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        PicklyIconImage(systemName: fact.systemImage, size: 17)
+                            .foregroundStyle(PicklyColor.primary)
+                            .frame(width: 24)
+
+                        Text(fact.title)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+
+                        Spacer(minLength: 12)
+
+                        Text(fact.value)
+                            .font(.body.weight(.semibold).monospacedDigit())
+                            .multilineTextAlignment(.trailing)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 12)
+                    .accessibilityElement(children: .combine)
+
+                    if index < facts.count - 1 {
+                        Divider()
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .picklyCardSurface(cornerRadius: 20, fill: ResultSurface.card)
+        }
+    }
+}
+
+struct IngredientSafetySection: View {
+    let facts: Product.Facts
+
+    private var allergens: [String] {
+        facts.allergens.map { ProductFactFormatter.displayName(for: $0) }
+    }
+
+    private var traces: [String] {
+        facts.traces.map { ProductFactFormatter.displayName(for: $0) }
+    }
+
+    private var additives: [String] {
+        facts.additives.map { ProductFactFormatter.displayName(for: $0) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionTitle(
+                title: PicklyCopy.localized("Allergens & additives"),
+                systemImage: "checklist"
+            )
+
+            VStack(alignment: .leading, spacing: 14) {
+                if !allergens.isEmpty {
+                    SafetyFactRow(
+                        title: PicklyCopy.localized("Contains"),
+                        values: allergens,
+                        systemImage: "exclamationmark.circle"
+                    )
+                }
+
+                if !traces.isEmpty {
+                    SafetyFactRow(
+                        title: PicklyCopy.localized("May contain"),
+                        values: traces,
+                        systemImage: "info.circle"
+                    )
+                }
+
+                if !additives.isEmpty {
+                    AdditivesDisclosure(additives: additives)
+                }
+
+                if !allergens.isEmpty || !traces.isEmpty {
+                    Text(PicklyCopy.localized("Always check the package. Community data may be incomplete."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .picklyCardSurface(cornerRadius: 20, fill: ResultSurface.card)
+        }
+    }
+}
+
+private struct SafetyFactRow: View {
+    let title: String
+    let values: [String]
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            PicklyIconImage(systemName: systemImage, size: 18)
+                .foregroundStyle(PicklyColor.statusWarningAccent)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                Text(values.joined(separator: ", "))
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct AdditivesDisclosure: View {
+    let additives: [String]
+
+    @State private var isExpanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            Text(additives.joined(separator: ", "))
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+        } label: {
+            Label {
+                Text(PicklyCopy.format("Additives: %d", locale: PicklyCopy.appLocale, additives.count))
+                    .font(.body.weight(.semibold))
+            } icon: {
+                PicklyIconImage(systemName: "testtube.2", size: 18)
+                    .foregroundStyle(PicklyColor.primary)
+            }
+        }
+        .tint(PicklyColor.primary)
+    }
+}
+
+struct ProductDataSourceCard: View {
+    let product: Product
+
+    private var resolvedSource: ProductSource {
+        product.facts.source == .unknown ? product.source : product.facts.source
+    }
+
+    private var sourceTitle: String {
+        switch resolvedSource {
+        case .openFoodFacts:
+            return "Open Food Facts"
+        case .mock:
+            return PicklyCopy.localized("Sample data")
+        case .unknown:
+            return PicklyCopy.localized("Pickly catalog")
+        }
+    }
+
+    private var sourceURL: URL? {
+        guard resolvedSource == .openFoodFacts else { return nil }
+        return URL(string: "https://world.openfoodfacts.org/product/\(product.barcode)")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionTitle(title: PicklyCopy.localized("Data source"), systemImage: "doc.text.magnifyingglass")
+
+            VStack(alignment: .leading, spacing: 12) {
+                Label(sourceTitle, picklyIcon: "globe.europe.africa", iconSize: 18)
+                    .font(.body.weight(.semibold))
+
+                if let completeness = product.facts.completeness,
+                   (0...1).contains(completeness) {
+                    Text(PicklyCopy.format(
+                        "Source record completeness: %d%%",
+                        locale: PicklyCopy.appLocale,
+                        Int((completeness * 100).rounded())
+                    ))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                }
+
+                if let date = product.facts.lastUpdatedAt {
+                    Text(PicklyCopy.format(
+                        "Source updated: %@",
+                        locale: PicklyCopy.appLocale,
+                        date.formatted(
+                            .dateTime
+                                .year()
+                                .month(.abbreviated)
+                                .day()
+                                .locale(PicklyCopy.appLocale)
+                        )
+                    ))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                }
+
+                if let sourceURL {
+                    Link(destination: sourceURL) {
+                        Label {
+                            Text(PicklyCopy.localized("View source record"))
+                        } icon: {
+                            PicklyIconImage(systemName: "arrow.up.right", size: 14)
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
+
+                Text(PicklyCopy.localized("Product data can change. Check the package when a detail matters to you."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .picklyCardSurface(cornerRadius: 20, fill: ResultSurface.card)
+        }
+    }
+}
+
 struct IngredientsSection: View {
     let ingredients: [IngredientAnalysis]
 
@@ -362,6 +588,10 @@ struct NutritionSummary: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint(isExpanded ? "Collapses nutrition facts." : "Expands nutrition facts.")
+
+            Text(product.nutritionBasisLabel)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
             VStack(spacing: 12) {
                 ForEach(keyFacts) { fact in
@@ -1437,7 +1667,11 @@ private struct ComparisonMetric: Identifiable {
 
     private func formatted(_ value: Double?) -> String {
         guard let value else { return "—" }
-        let number = value.formatted(.number.precision(.fractionLength(precision)))
+        let number = value.formatted(
+            .number
+                .locale(PicklyCopy.appLocale)
+                .precision(.fractionLength(precision))
+        )
         return unit.isEmpty ? number : "\(number) \(unit)"
     }
 

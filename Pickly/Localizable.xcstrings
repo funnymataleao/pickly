@@ -32172,6 +32172,500 @@
         "pl": { "stringUnit": { "state": "translated", "value": "Domyślny systemu" } },
         "cs": { "stringUnit": { "state": "translated", "value": "Výchozí systémový" } }
       }
+    },
+    "Additives: %d": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Additives: %d" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Additifs : %d" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Zusatzstoffe: %d" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Aditivos: %d" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Additivi: %d" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Aditivos: %d" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Tilsætningsstoffer: %d" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Dodatki: %d" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Přídatné látky: %d" } }
+      }
+    },
+    "Allergens & additives": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Allergens & additives" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Allergènes et additifs" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Allergene und Zusatzstoffe" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Alérgenos y aditivos" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Allergeni e additivi" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Alérgenos e aditivos" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Allergener og tilsætningsstoffer" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Alergeny i dodatki" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Alergeny a přídatné látky" } }
+      }
+    },
+    "Always check the package. Community data may be incomplete.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Always check the package. Community data may be incomplete." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Vérifiez toujours l’emballage. Les données de la communauté peuvent être incomplètes." } },
+        "de": { "stringUnit": { "state": "translated", "value": "Prüfe immer die Verpackung. Community-Daten können unvollständig sein." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Comprueba siempre el envase. Los datos de la comunidad pueden estar incompletos." } },
+        "it": { "stringUnit": { "state": "translated", "value": "Controlla sempre la confezione. I dati della community potrebbero essere incompleti." } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Verifique sempre a embalagem. Os dados da comunidade podem estar incompletos." } },
+        "da": { "stringUnit": { "state": "translated", "value": "Tjek altid emballagen. Fællesskabsdata kan være ufuldstændige." } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Zawsze sprawdzaj opakowanie. Dane społeczności mogą być niepełne." } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Vždy zkontrolujte obal. Komunitní data mohou být neúplná." } }
+      }
+    },
+    "At a glance": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "At a glance" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "En un coup d’œil" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Auf einen Blick" } },
+        "es": { "stringUnit": { "state": "translated", "value": "De un vistazo" } },
+        "it": { "stringUnit": { "state": "translated", "value": "A colpo d’occhio" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Num relance" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Overblik" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "W skrócie" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Na první pohled" } }
+      }
+    },
+    "Basis not specified": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Basis not specified" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Base non précisée" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Bezugsmenge nicht angegeben" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Base no especificada" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Base non specificata" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Base não especificada" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Grundlag ikke angivet" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Nie określono podstawy" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Základ není uveden" } }
+      }
+    },
+    "Carbohydrates": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Carbohydrates" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Glucides" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Kohlenhydrate" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Hidratos de carbono" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Carboidrati" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Hidratos de carbono" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Kulhydrater" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Węglowodany" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Sacharidy" } }
+      }
+    },
+    "Contains": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Contains" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Contient" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Enthält" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Contiene" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Contiene" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Contém" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Indeholder" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Zawiera" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Obsahuje" } }
+      }
+    },
+    "Data source": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Data source" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Source des données" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Datenquelle" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Fuente de datos" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Fonte dei dati" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Fonte dos dados" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Datakilde" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Źródło danych" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Zdroj dat" } }
+      }
+    },
+    "Energy": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Energy" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Énergie" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Energie" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Energía" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Energia" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Energia" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Energi" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Energia" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Energie" } }
+      }
+    },
+    "Energy (kJ)": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Energy (kJ)" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Énergie (kJ)" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Energie (kJ)" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Energía (kJ)" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Energia (kJ)" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Energia (kJ)" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Energi (kJ)" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Energia (kJ)" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Energie (kJ)" } }
+      }
+    },
+    "May contain": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "May contain" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Peut contenir" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Kann enthalten" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Puede contener" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Può contenere" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Pode conter" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Kan indeholde" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Może zawierać" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Může obsahovat" } }
+      }
+    },
+    "Package": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Package" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Emballage" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Packung" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Envase" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Confezione" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Embalagem" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Pakke" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Opakowanie" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Balení" } }
+      }
+    },
+    "Per 100 g": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Per 100 g" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Pour 100 g" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Pro 100 g" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Por 100 g" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Per 100 g" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Por 100 g" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Pr. 100 g" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Na 100 g" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Na 100 g" } }
+      }
+    },
+    "Per 100 ml": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Per 100 ml" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Pour 100 ml" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Pro 100 ml" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Por 100 ml" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Per 100 ml" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Por 100 ml" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Pr. 100 ml" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Na 100 ml" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Na 100 ml" } }
+      }
+    },
+    "Per serving": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Per serving" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Par portion" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Pro Portion" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Por porción" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Per porzione" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Por porção" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Pr. portion" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Na porcję" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Na porci" } }
+      }
+    },
+    "Pickly catalog": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Pickly catalog" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Catalogue Pickly" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Pickly-Katalog" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Catálogo de Pickly" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Catalogo Pickly" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Catálogo Pickly" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Pickly-katalog" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Katalog Pickly" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Katalog Pickly" } }
+      }
+    },
+    "Product data can change. Check the package when a detail matters to you.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Product data can change. Check the package when a detail matters to you." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Les données du produit peuvent changer. Vérifiez l’emballage lorsqu’un détail est important pour vous." } },
+        "de": { "stringUnit": { "state": "translated", "value": "Produktdaten können sich ändern. Prüfe die Verpackung, wenn dir ein Detail wichtig ist." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Los datos del producto pueden cambiar. Comprueba el envase cuando un detalle sea importante para ti." } },
+        "it": { "stringUnit": { "state": "translated", "value": "I dati del prodotto possono cambiare. Controlla la confezione quando un dettaglio è importante per te." } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Os dados do produto podem mudar. Verifique a embalagem quando um detalhe for importante para si." } },
+        "da": { "stringUnit": { "state": "translated", "value": "Produktoplysninger kan ændre sig. Tjek emballagen, når en detalje er vigtig for dig." } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Dane produktu mogą się zmieniać. Sprawdź opakowanie, gdy dany szczegół ma dla Ciebie znaczenie." } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Údaje o výrobku se mohou změnit. Pokud je pro vás některý údaj důležitý, zkontrolujte obal." } }
+      }
+    },
+    "Sample data": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Sample data" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Données d’exemple" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Beispieldaten" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Datos de ejemplo" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Dati di esempio" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Dados de exemplo" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Eksempeldata" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Dane przykładowe" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Ukázková data" } }
+      }
+    },
+    "Serving": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Serving" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Portion" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Portion" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Porción" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Porzione" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Porção" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Portion" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Porcja" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Porce" } }
+      }
+    },
+    "Source record completeness: %d%%": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Source record completeness: %d%%" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Complétude de la fiche source : %d %%" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Vollständigkeit des Quelldatensatzes: %d %%" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Integridad del registro de origen: %d %%" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Completezza della scheda fonte: %d%%" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Completude do registo de origem: %d%%" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Kildepostens fuldstændighed: %d %%" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Kompletność rekordu źródłowego: %d%%" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Úplnost zdrojového záznamu: %d%%" } }
+      }
+    },
+    "Source updated: %@": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Source updated: %@" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Source mise à jour : %@" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Quelle aktualisiert: %@" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Fuente actualizada: %@" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Fonte aggiornata: %@" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Fonte atualizada: %@" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Kilde opdateret: %@" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Aktualizacja źródła: %@" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Zdroj aktualizován: %@" } }
+      }
+    },
+    "Total fat": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Total fat" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Matières grasses" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Fett gesamt" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Grasas totales" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Grassi totali" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Gordura total" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Fedt i alt" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Tłuszcz ogółem" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Tuky celkem" } }
+      }
+    },
+    "View source record": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "View source record" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Voir la fiche source" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Quelldatensatz anzeigen" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Ver registro de origen" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Vedi scheda fonte" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Ver registo de origem" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Se kildepost" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Zobacz rekord źródłowy" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Zobrazit zdrojový záznam" } }
+      }
+    },
+    "Milk": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Milk" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Lait" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Milch" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Leche" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Latte" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Leite" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Mælk" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Mleko" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Mléko" } }
+      }
+    },
+    "Tree nuts": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Tree nuts" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Fruits à coque" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Schalenfrüchte" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Frutos de cáscara" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Frutta a guscio" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Frutos de casca rija" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Nødder" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Orzechy" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Skořápkové plody" } }
+      }
+    },
+    "Peanuts": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Peanuts" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Arachides" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Erdnüsse" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Cacahuetes" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Arachidi" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Amendoins" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Jordnødder" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Orzeszki ziemne" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Arašídy" } }
+      }
+    },
+    "Gluten": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Gluten" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Gluten" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Gluten" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Gluten" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Glutine" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Glúten" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Gluten" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Gluten" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Lepek" } }
+      }
+    },
+    "Wheat": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wheat" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Blé" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Weizen" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Trigo" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Frumento" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Trigo" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Hvede" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Pszenica" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Pšenice" } }
+      }
+    },
+    "Eggs": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Eggs" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Œufs" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Eier" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Huevos" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Uova" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Ovos" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Æg" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Jaja" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Vejce" } }
+      }
+    },
+    "Soy": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Soy" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Soja" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Soja" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Soja" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Soia" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Soja" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Soja" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Soja" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Sója" } }
+      }
+    },
+    "Fish": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Fish" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Poisson" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Fisch" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Pescado" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Pesce" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Peixe" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Fisk" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Ryby" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Ryby" } }
+      }
+    },
+    "Crustaceans": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Crustaceans" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Crustacés" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Krebstiere" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Crustáceos" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Crostacei" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Crustáceos" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Krebsdyr" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Skorupiaki" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Korýši" } }
+      }
+    },
+    "Molluscs": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Molluscs" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Mollusques" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Weichtiere" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Moluscos" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Molluschi" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Moluscos" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Bløddyr" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Mięczaki" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Měkkýši" } }
+      }
+    },
+    "Celery": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Celery" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Céleri" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sellerie" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Apio" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Sedano" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Aipo" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Selleri" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Seler" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Celer" } }
+      }
+    },
+    "Mustard": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Mustard" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Moutarde" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Senf" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Mostaza" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Senape" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Mostarda" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Sennep" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Gorczyca" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Hořčice" } }
+      }
+    },
+    "Sesame": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Sesame" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Sésame" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sesam" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Sésamo" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Sesamo" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Sésamo" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Sesam" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Sezam" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Sezam" } }
+      }
+    },
+    "Sulphites": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Sulphites" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Sulfites" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sulfite" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Sulfitos" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Solfiti" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Sulfitos" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Sulfitter" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Siarczyny" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Siřičitany" } }
+      }
+    },
+    "Lupin": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Lupin" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Lupin" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Lupine" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Altramuz" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Lupino" } },
+        "pt-PT": { "stringUnit": { "state": "translated", "value": "Tremoço" } },
+        "da": { "stringUnit": { "state": "translated", "value": "Lupin" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Łubin" } },
+        "cs": { "stringUnit": { "state": "translated", "value": "Vlčí bob" } }
+      }
     }
   },
   "version": "1.1"

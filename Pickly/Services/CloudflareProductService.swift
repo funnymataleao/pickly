@@ -295,9 +295,11 @@ nonisolated private extension Product {
             name: name,
             brand: brand,
             category: category,
+            categoryTags: categoryTags,
             imageName: imageName,
             imageURL: imageURL,
             ingredients: ingredients,
+            declaredIngredientCount: declaredIngredientCount,
             nutrition: nutrition,
             nutritionSummary: nutritionSummary,
             score: score,
@@ -309,7 +311,8 @@ nonisolated private extension Product {
             alternativeIDs: alternativeIDs,
             confidence: confidence,
             dietary: dietary,
-            source: source
+            source: source,
+            facts: facts
         )
     }
 }

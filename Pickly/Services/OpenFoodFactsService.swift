@@ -412,10 +412,13 @@ nonisolated struct OpenFoodFactsService: Sendable {
     private static let openFoodFactsFields: String = {
         let baseFields = [
             "code", "product_name", "generic_name", "lang", "languages_tags",
-            "brands", "categories", "categories_tags", "image_front_url", "image_url",
+            "brands", "categories", "categories_tags", "countries_tags",
+            "quantity", "serving_size", "nutrition_data_per",
+            "image_front_url", "image_url",
             "selected_images", "ingredients", "ingredients_text", "ingredients_lc",
-            "ingredients_n", "ingredients_tags", "nutriments", "additives_tags",
-            "labels_tags", "allergens_tags", "traces_tags"
+            "ingredients_n", "ingredients_tags", "nutriments", "nutrition", "additives_tags",
+            "labels_tags", "allergens_tags", "traces_tags", "completeness", "last_modified_t",
+            "data_quality_warnings_tags"
         ]
         let localizedCodes = ["en", "pt", "es", "fr", "de", "it", "da", "pl", "cs"]
         let localizedFields = localizedCodes.flatMap { code in
@@ -433,7 +436,7 @@ nonisolated struct OpenFoodFactsService: Sendable {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "world.openfoodfacts.org"
-        components.path = "/api/v3/product/\(barcode)"
+        components.path = "/api/v3.6/product/\(barcode).json"
         components.queryItems = [
             URLQueryItem(name: "product_type", value: "food"),
             URLQueryItem(name: "lc", value: localeContext.openFoodFactsLanguageCode),
@@ -680,13 +683,33 @@ nonisolated struct OpenFoodFactsService: Sendable {
         _ openFoodFactsProduct: OpenFoodFactsProduct,
         barcode: String
     ) -> Product {
+        let structuredNutrients = openFoodFactsProduct.structuredNutrition?
+            .aggregatedSet?
+            .nutrients
         let nutrition = Product.Nutrition(
-            sugars100g: openFoodFactsProduct.nutriments?.sugars100g,
-            addedSugars100g: openFoodFactsProduct.nutriments?.addedSugars100g,
-            salt100g: openFoodFactsProduct.nutriments?.salt100g,
-            saturatedFat100g: openFoodFactsProduct.nutriments?.saturatedFat100g,
-            proteins100g: openFoodFactsProduct.nutriments?.proteins100g,
+            energyKcal100g: openFoodFactsProduct.nutriments?.energyKcal100g
+                ?? structuredNutrients?["energy-kcal"]?.verifiedValue,
+            energyKJ100g: openFoodFactsProduct.nutriments?.energyKJ100g
+                ?? structuredNutrients?["energy-kj"]?.verifiedValue
+                ?? structuredNutrients?["energy"]?.verifiedValue,
+            fat100g: openFoodFactsProduct.nutriments?.fat100g
+                ?? structuredNutrients?["fat"]?.verifiedGramsValue,
+            carbohydrates100g: openFoodFactsProduct.nutriments?.carbohydrates100g
+                ?? structuredNutrients?["carbohydrates"]?.verifiedGramsValue,
+            sugars100g: openFoodFactsProduct.nutriments?.sugars100g
+                ?? structuredNutrients?["sugars"]?.verifiedGramsValue,
+            addedSugars100g: openFoodFactsProduct.nutriments?.addedSugars100g
+                ?? structuredNutrients?["added-sugars"]?.verifiedGramsValue,
+            salt100g: openFoodFactsProduct.nutriments?.salt100g
+                ?? structuredNutrients?["salt"]?.verifiedGramsValue,
+            sodium100g: openFoodFactsProduct.nutriments?.sodium100g
+                ?? structuredNutrients?["sodium"]?.verifiedGramsValue,
+            saturatedFat100g: openFoodFactsProduct.nutriments?.saturatedFat100g
+                ?? structuredNutrients?["saturated-fat"]?.verifiedGramsValue,
+            proteins100g: openFoodFactsProduct.nutriments?.proteins100g
+                ?? structuredNutrients?["proteins"]?.verifiedGramsValue,
             fiber100g: openFoodFactsProduct.nutriments?.fiber100g
+                ?? structuredNutrients?["fiber"]?.verifiedGramsValue
         )
 
         let requestedLanguage = localeContext.openFoodFactsLanguageCode
@@ -752,6 +775,19 @@ nonisolated struct OpenFoodFactsService: Sendable {
             category: category
         )
         let imageURL = imageURL(from: openFoodFactsProduct)
+        let facts = Product.Facts(
+            quantity: clean(openFoodFactsProduct.quantity),
+            servingSize: clean(openFoodFactsProduct.servingSize),
+            nutritionBasis: nutritionBasis(from: openFoodFactsProduct),
+            allergens: normalizedFactTags(openFoodFactsProduct.allergensTags),
+            traces: normalizedFactTags(openFoodFactsProduct.tracesTags),
+            additives: normalizedFactTags(openFoodFactsProduct.additivesTags),
+            labels: normalizedFactTags(openFoodFactsProduct.labelsTags),
+            countries: normalizedFactTags(openFoodFactsProduct.countriesTags),
+            completeness: openFoodFactsProduct.completeness,
+            lastUpdatedAt: openFoodFactsProduct.lastModifiedTimestamp.map(Date.init(timeIntervalSince1970:)),
+            source: .openFoodFacts
+        )
 
         return Product(
             id: "off-\(barcode)",
@@ -775,8 +811,33 @@ nonisolated struct OpenFoodFactsService: Sendable {
             alternativeIDs: [],
             confidence: scoring.confidence,
             dietary: dietaryAttributes(from: openFoodFactsProduct),
-            source: .openFoodFacts
+            source: .openFoodFacts,
+            facts: facts
         )
+    }
+
+    private func nutritionBasis(from product: OpenFoodFactsProduct) -> Product.NutritionBasis {
+        let rawValue = clean(product.structuredNutrition?.aggregatedSet?.per)
+            ?? clean(product.nutritionDataPer)
+        switch rawValue?.lowercased().replacingOccurrences(of: " ", with: "") {
+        case "100ml", "per100ml":
+            return .per100ml
+        case "serving", "perserving":
+            return .perServing
+        case "100g", "per100g":
+            return .per100g
+        default:
+            return product.nutriments == nil && product.structuredNutrition == nil
+                ? .unknown
+                : .per100g
+        }
+    }
+
+    private func normalizedFactTags(_ values: [String]?) -> [String] {
+        var seen = Set<String>()
+        return (values ?? [])
+            .compactMap(clean)
+            .filter { seen.insert($0.lowercased()).inserted }
     }
 
     private func ingredients(
@@ -974,16 +1035,23 @@ nonisolated private struct OpenFoodFactsProduct: Decodable, Sendable {
     let brands: String?
     let categories: String?
     let categoriesTags: [String]?
+    let countriesTags: [String]?
+    let quantity: String?
+    let servingSize: String?
+    let nutritionDataPer: String?
     let imageFrontURL: String?
     let imageURL: String?
     let ingredientsText: String?
     let ingredientsCount: Int?
     let ingredients: [OpenFoodFactsIngredient]?
     let nutriments: OpenFoodFactsNutriments?
+    let structuredNutrition: OpenFoodFactsStructuredNutrition?
     let additivesTags: [String]?
     let labelsTags: [String]?
     let allergensTags: [String]?
     let tracesTags: [String]?
+    let completeness: Double?
+    let lastModifiedTimestamp: Double?
 
     enum CodingKeys: String, CodingKey {
         case code
@@ -994,16 +1062,23 @@ nonisolated private struct OpenFoodFactsProduct: Decodable, Sendable {
         case brands
         case categories
         case categoriesTags = "categories_tags"
+        case countriesTags = "countries_tags"
+        case quantity
+        case servingSize = "serving_size"
+        case nutritionDataPer = "nutrition_data_per"
         case imageFrontURL = "image_front_url"
         case imageURL = "image_url"
         case ingredientsText = "ingredients_text"
         case ingredientsCount = "ingredients_n"
         case ingredients
         case nutriments
+        case structuredNutrition = "nutrition"
         case additivesTags = "additives_tags"
         case labelsTags = "labels_tags"
         case allergensTags = "allergens_tags"
         case tracesTags = "traces_tags"
+        case completeness
+        case lastModifiedTimestamp = "last_modified_t"
     }
 
     init(from decoder: Decoder) throws {
@@ -1030,16 +1105,26 @@ nonisolated private struct OpenFoodFactsProduct: Decodable, Sendable {
         brands = container.decodeFlexibleString(forKey: .brands)
         categories = container.decodeFlexibleString(forKey: .categories)
         categoriesTags = try container.decodeIfPresent([String].self, forKey: .categoriesTags)
+        countriesTags = try container.decodeIfPresent([String].self, forKey: .countriesTags)
+        quantity = container.decodeFlexibleString(forKey: .quantity)
+        servingSize = container.decodeFlexibleString(forKey: .servingSize)
+        nutritionDataPer = container.decodeFlexibleString(forKey: .nutritionDataPer)
         imageFrontURL = container.decodeFlexibleString(forKey: .imageFrontURL)
         imageURL = container.decodeFlexibleString(forKey: .imageURL)
         ingredientsText = container.decodeFlexibleString(forKey: .ingredientsText)
         ingredientsCount = container.decodeFlexibleInt(forKey: .ingredientsCount)
         ingredients = try container.decodeIfPresent([OpenFoodFactsIngredient].self, forKey: .ingredients)
         nutriments = try container.decodeIfPresent(OpenFoodFactsNutriments.self, forKey: .nutriments)
+        structuredNutrition = try container.decodeIfPresent(
+            OpenFoodFactsStructuredNutrition.self,
+            forKey: .structuredNutrition
+        )
         additivesTags = try container.decodeIfPresent([String].self, forKey: .additivesTags)
         labelsTags = try container.decodeIfPresent([String].self, forKey: .labelsTags)
         allergensTags = try container.decodeIfPresent([String].self, forKey: .allergensTags)
         tracesTags = try container.decodeIfPresent([String].self, forKey: .tracesTags)
+        completeness = container.decodeFlexibleDouble(forKey: .completeness)
+        lastModifiedTimestamp = container.decodeFlexibleDouble(forKey: .lastModifiedTimestamp)
     }
 
     private static let languageCodes = ["en", "pt", "es", "fr", "de", "it", "da", "pl", "cs"]
@@ -1090,17 +1175,27 @@ nonisolated private struct OpenFoodFactsIngredient: Decodable, Sendable {
 }
 
 nonisolated private struct OpenFoodFactsNutriments: Decodable, Sendable {
+    let energyKcal100g: Double?
+    let energyKJ100g: Double?
+    let fat100g: Double?
+    let carbohydrates100g: Double?
     let sugars100g: Double?
     let addedSugars100g: Double?
     let salt100g: Double?
+    let sodium100g: Double?
     let saturatedFat100g: Double?
     let proteins100g: Double?
     let fiber100g: Double?
 
     enum CodingKeys: String, CodingKey {
+        case energyKcal100g = "energy-kcal_100g"
+        case energyKJ100g = "energy-kj_100g"
+        case fat100g = "fat_100g"
+        case carbohydrates100g = "carbohydrates_100g"
         case sugars100g = "sugars_100g"
         case addedSugars100g = "added-sugars_100g"
         case salt100g = "salt_100g"
+        case sodium100g = "sodium_100g"
         case saturatedFat100g = "saturated-fat_100g"
         case proteins100g = "proteins_100g"
         case fiber100g = "fiber_100g"
@@ -1108,12 +1203,71 @@ nonisolated private struct OpenFoodFactsNutriments: Decodable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        energyKcal100g = container.decodeFlexibleDouble(forKey: .energyKcal100g)
+        energyKJ100g = container.decodeFlexibleDouble(forKey: .energyKJ100g)
+        fat100g = container.decodeFlexibleDouble(forKey: .fat100g)
+        carbohydrates100g = container.decodeFlexibleDouble(forKey: .carbohydrates100g)
         sugars100g = container.decodeFlexibleDouble(forKey: .sugars100g)
         addedSugars100g = container.decodeFlexibleDouble(forKey: .addedSugars100g)
         salt100g = container.decodeFlexibleDouble(forKey: .salt100g)
+        sodium100g = container.decodeFlexibleDouble(forKey: .sodium100g)
         saturatedFat100g = container.decodeFlexibleDouble(forKey: .saturatedFat100g)
         proteins100g = container.decodeFlexibleDouble(forKey: .proteins100g)
         fiber100g = container.decodeFlexibleDouble(forKey: .fiber100g)
+    }
+}
+
+nonisolated private struct OpenFoodFactsStructuredNutrition: Decodable, Sendable {
+    let aggregatedSet: OpenFoodFactsAggregatedNutrition?
+
+    enum CodingKeys: String, CodingKey {
+        case aggregatedSet = "aggregated_set"
+    }
+}
+
+nonisolated private struct OpenFoodFactsAggregatedNutrition: Decodable, Sendable {
+    let nutrients: [String: OpenFoodFactsNutrient]?
+    let per: String?
+}
+
+nonisolated private struct OpenFoodFactsNutrient: Decodable, Sendable {
+    let value: Double?
+    let unit: String?
+    let source: String?
+    let modifier: String?
+
+    enum CodingKeys: String, CodingKey {
+        case value
+        case unit
+        case source
+        case modifier
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        value = container.decodeFlexibleDouble(forKey: .value)
+        unit = container.decodeFlexibleString(forKey: .unit)
+        source = container.decodeFlexibleString(forKey: .source)
+        modifier = container.decodeFlexibleString(forKey: .modifier)
+    }
+
+    var verifiedValue: Double? {
+        guard source?.lowercased() != "estimate", modifier != "~" else {
+            return nil
+        }
+        return value
+    }
+
+    var verifiedGramsValue: Double? {
+        guard let verifiedValue else { return nil }
+        switch unit?.lowercased() {
+        case "mg":
+            return verifiedValue / 1_000
+        case "µg", "ug":
+            return verifiedValue / 1_000_000
+        default:
+            return verifiedValue
+        }
     }
 }
 

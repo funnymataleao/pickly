@@ -25,11 +25,12 @@ const MAX_PRODUCTS = 100;
 const DEFAULT_GOAL_PAGE_SIZE = 24;
 const MAX_GOAL_PAGE_SIZE = 50;
 const GOAL_CACHE_CONTROL = "public, max-age=300, s-maxage=3600";
-const OPEN_FOOD_FACTS_CACHE_SCHEMA = "5";
+const OPEN_FOOD_FACTS_CACHE_SCHEMA = "6";
 const DEFAULT_PRODUCT_LANGUAGE = "en";
 const SUPPORTED_PRODUCT_LANGUAGES = ["en", "pt", "es", "fr", "de", "it", "da", "pl", "cs"] as const;
 type ProductLanguage = typeof SUPPORTED_PRODUCT_LANGUAGES[number];
 const OPEN_FOOD_FACTS_SEARCHALICIOUS_URL = "https://search.openfoodfacts.org/search";
+const OPEN_FOOD_FACTS_PRODUCT_URL = "https://world.openfoodfacts.org/api/v3.6/product";
 const OPEN_FOOD_FACTS_SEARCH_URL = "https://world.openfoodfacts.org/api/v2/search";
 const OPEN_FOOD_FACTS_LEGACY_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
 const OPEN_FOOD_FACTS_USER_AGENT = "Pickly/1.0 (https://github.com/funnymataleao/pickly/issues)";
@@ -61,8 +62,12 @@ const OPEN_FOOD_FACTS_FIELDS = [
 	"brands",
 	"categories",
 	"categories_tags",
+	"quantity",
+	"serving_size",
+	"nutrition_data_per",
 	"image_front_url",
 	"image_url",
+	"selected_images",
 	"ingredients",
 	"ingredients_text",
 	"ingredients_text_en",
@@ -78,11 +83,15 @@ const OPEN_FOOD_FACTS_FIELDS = [
 	"ingredients_tags",
 	"ingredients_n",
 	"nutriments",
+	"nutrition",
 	"additives_tags",
 	"labels_tags",
 	"allergens_tags",
 	"traces_tags",
 	"nutrient_levels_tags",
+	"completeness",
+	"last_modified_t",
+	"data_quality_warnings_tags",
 ].join(",");
 const BROAD_ENGLISH_CATEGORY_TAGS = new Set([
 	"en:foods",
@@ -375,40 +384,41 @@ async function openFoodFactsProductMetadata(
 		console.warn("Pickly OFF product cache read failed", error instanceof Error ? error.message : "unknown");
 	}
 
+	const upstreamURL = new URL(`${OPEN_FOOD_FACTS_PRODUCT_URL}/${barcode}.json`);
+	upstreamURL.searchParams.set("product_type", "food");
+	upstreamURL.searchParams.set("lc", language);
+	upstreamURL.searchParams.set("tags_lc", language);
+	upstreamURL.searchParams.set("fields", OPEN_FOOD_FACTS_FIELDS);
+
 	let response: Response;
 	try {
-		response = await fetch(OPEN_FOOD_FACTS_SEARCHALICIOUS_URL, {
-			method: "POST",
+		response = await fetch(upstreamURL, {
+			method: "GET",
 			headers: {
 				Accept: "application/json",
-				"Content-Type": "application/json",
 				"User-Agent": OPEN_FOOD_FACTS_USER_AGENT,
 			},
-			body: JSON.stringify({
-				q: `code:"${barcode}"`,
-				page: 1,
-				page_size: 1,
-				langs: searchLanguages(language),
-				fields: OPEN_FOOD_FACTS_FIELDS.split(","),
-			}),
 		});
 	} catch (error) {
-		console.warn("Search-a-licious product request failed", error instanceof Error ? error.message : "unknown");
+		console.warn("Open Food Facts product request failed", error instanceof Error ? error.message : "unknown");
 		return json({ error: "open_food_facts_unavailable" }, 503);
 	}
 
+	if (response.status === 404) return json({ error: "not_found" }, 404);
 	if (!response.ok) {
-		console.warn("Search-a-licious product request failed", { status: response.status, barcode });
+		console.warn("Open Food Facts product request failed", { status: response.status, barcode });
 		return json({ error: "open_food_facts_unavailable" }, 503);
 	}
 
 	try {
 		const payload = await response.json() as Record<string, unknown>;
-		const hits = Array.isArray(payload.hits) ? payload.hits : [];
-		const hit = hits
-			.map(asRecord)
-			.find((candidate) => cleanText(candidate.code) === barcode);
-		if (!hit) return json({ error: "not_found" }, 404);
+		const hit = asRecordOrNull(payload.product);
+		if (cleanText(payload.status) === "failure" || !hit) {
+			return json({ error: "not_found" }, 404);
+		}
+		if (cleanText(hit.code) !== barcode) {
+			return json({ error: "open_food_facts_unavailable" }, 503);
+		}
 
 		const product = normalizeProductHit(hit, language);
 		const normalizedResponse = Response.json({
@@ -418,7 +428,7 @@ async function openFoodFactsProductMetadata(
 		});
 		return cacheOpenFoodFactsResponse(normalizedResponse, cache, cacheKey, ctx);
 	} catch (error) {
-		console.warn("Search-a-licious product response decoding failed", error instanceof Error ? error.message : "unknown");
+		console.warn("Open Food Facts product response decoding failed", error instanceof Error ? error.message : "unknown");
 		return json({ error: "open_food_facts_unavailable" }, 503);
 	}
 }

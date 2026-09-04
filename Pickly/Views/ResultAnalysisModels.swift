@@ -113,7 +113,118 @@ struct NutritionFact: Identifiable, Hashable {
     }
 }
 
+struct ProductQuickFact: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let value: String
+    let systemImage: String
+}
+
+nonisolated enum ProductFactFormatter {
+    private static let localizedAllergenKeys: [String: String] = [
+        "milk": "Milk",
+        "nuts": "Tree nuts",
+        "tree-nuts": "Tree nuts",
+        "peanuts": "Peanuts",
+        "gluten": "Gluten",
+        "wheat": "Wheat",
+        "eggs": "Eggs",
+        "soy": "Soy",
+        "soybean": "Soy",
+        "soybeans": "Soy",
+        "fish": "Fish",
+        "crustaceans": "Crustaceans",
+        "molluscs": "Molluscs",
+        "celery": "Celery",
+        "mustard": "Mustard",
+        "sesame": "Sesame",
+        "sesame-seeds": "Sesame",
+        "sulfites": "Sulphites",
+        "sulphites": "Sulphites",
+        "sulphur-dioxide-and-sulphites": "Sulphites",
+        "lupin": "Lupin"
+    ]
+
+    static func displayName(for rawTag: String) -> String {
+        let unscoped = rawTag
+            .split(separator: ":", maxSplits: 1)
+            .last
+            .map(String.init) ?? rawTag
+        let normalizedTag = unscoped.lowercased()
+
+        if let localizationKey = localizedAllergenKeys[normalizedTag] {
+            return PicklyCopy.localized(localizationKey)
+        }
+
+        let cleaned = unscoped
+            .replacingOccurrences(of: "-", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleaned.isEmpty else { return rawTag }
+        if cleaned.lowercased().hasPrefix("e"),
+           cleaned.dropFirst().first?.isNumber == true {
+            return "E" + cleaned.dropFirst()
+        }
+        return cleaned.capitalized(with: PicklyCopy.appLocale)
+    }
+}
+
 extension Product {
+    var quickFacts: [ProductQuickFact] {
+        var facts: [ProductQuickFact] = []
+
+        if let quantity = self.facts.quantity {
+            facts.append(ProductQuickFact(
+                id: "quantity",
+                title: PicklyCopy.localized("Package"),
+                value: quantity,
+                systemImage: "shippingbox"
+            ))
+        }
+
+        if let servingSize = self.facts.servingSize {
+            facts.append(ProductQuickFact(
+                id: "serving",
+                title: PicklyCopy.localized("Serving"),
+                value: servingSize,
+                systemImage: "fork.knife"
+            ))
+        }
+
+        if let energy = nutrition.energyKcal100g {
+            facts.append(ProductQuickFact(
+                id: "energy",
+                title: PicklyCopy.localized("Energy"),
+                value: "\(energy.formatted(.number.locale(PicklyCopy.appLocale).precision(.fractionLength(0)))) kcal",
+                systemImage: "bolt"
+            ))
+        }
+
+        if let totalFat = nutrition.fat100g {
+            facts.append(ProductQuickFact(
+                id: "total-fat",
+                title: PicklyCopy.localized("Total fat"),
+                value: formattedGrams(totalFat),
+                systemImage: "drop"
+            ))
+        }
+
+        return Array(facts.prefix(4))
+    }
+
+    var nutritionBasisLabel: String {
+        switch facts.nutritionBasis {
+        case .per100g:
+            return PicklyCopy.localized("Per 100 g")
+        case .per100ml:
+            return PicklyCopy.localized("Per 100 ml")
+        case .perServing:
+            return PicklyCopy.localized("Per serving")
+        case .unknown:
+            return PicklyCopy.localized("Basis not specified")
+        }
+    }
+
     var resultDisplayName: String {
         name == "Unknown product"
             ? PicklyCopy.localized("Product partially recognized")
@@ -160,7 +271,7 @@ extension Product {
     }
 
     var confidenceText: String {
-        PicklyCopy.format("Confidence: %@", locale: .current, PicklyCopy.localized(confidence))
+        PicklyCopy.format("Confidence: %@", locale: PicklyCopy.appLocale, PicklyCopy.localized(confidence))
     }
 
     var resultScoreColor: Color {
@@ -196,7 +307,6 @@ extension Product {
     }
 
     var nutritionFacts: [NutritionFact] {
-        let sodiumPercent = nutrition.salt100g.map { Int((($0 * 393.4) / 2300 * 100).rounded()) }
         let sodiumStatus: ResultStatus = {
             guard let salt = nutrition.salt100g else {
                 return .unknown
@@ -212,48 +322,120 @@ extension Product {
             }
         }()
 
-        return [
-            NutritionFact(
+        var facts: [NutritionFact] = []
+
+        if let energy = nutrition.energyKcal100g {
+            facts.append(NutritionFact(
+                id: "energy-kcal",
+                title: PicklyCopy.localized("Energy"),
+                value: "\(energy.formatted(.number.locale(PicklyCopy.appLocale).precision(.fractionLength(0)))) kcal",
+                percent: nil,
+                status: .unknown,
+                isKeyFact: true
+            ))
+        }
+
+        if let sugar = sugarForScoring {
+            facts.append(NutritionFact(
                 id: "sugar",
                 title: PicklyCopy.localized(sugarLabel == "added sugar" ? "Added sugar" : "Sugar"),
-                value: sugarForScoring.map { formattedGrams($0) } ?? PicklyCopy.localized("Not available"),
+                value: formattedGrams(sugar),
                 percent: nil,
                 status: statusForSugar,
                 isKeyFact: true
-            ),
-            NutritionFact(
+            ))
+        }
+
+        if let salt = nutrition.salt100g {
+            facts.append(NutritionFact(
                 id: "salt",
-                title: PicklyCopy.localized("Salt / Sodium"),
-                value: nutrition.salt100g.map { "\(formattedGrams($0)) \(PicklyCopy.localized("salt"))" } ?? PicklyCopy.localized("Not available"),
-                percent: sodiumPercent,
+                title: PicklyCopy.localized("Salt"),
+                value: formattedGrams(salt),
+                percent: nil,
                 status: sodiumStatus,
                 isKeyFact: true
-            ),
-            NutritionFact(
+            ))
+        }
+
+        if let protein = nutrition.proteins100g {
+            facts.append(NutritionFact(
                 id: "protein",
                 title: PicklyCopy.localized("Protein"),
-                value: nutrition.proteins100g.map { formattedGrams($0) } ?? PicklyCopy.localized("Not available"),
+                value: formattedGrams(protein),
                 percent: nil,
                 status: statusForProteinFiber,
                 isKeyFact: true
-            ),
-            NutritionFact(
-                id: "fat",
+            ))
+        }
+
+        if let totalFat = nutrition.fat100g {
+            facts.append(NutritionFact(
+                id: "total-fat",
+                title: PicklyCopy.localized("Total fat"),
+                value: formattedGrams(totalFat),
+                percent: nil,
+                status: .unknown,
+                isKeyFact: false
+            ))
+        }
+
+        if let saturatedFat = nutrition.saturatedFat100g {
+            facts.append(NutritionFact(
+                id: "saturated-fat",
                 title: PicklyCopy.localized("Saturated fat"),
-                value: nutrition.saturatedFat100g.map { "\(formattedGrams($0)) \(PicklyCopy.localized("sat fat"))" } ?? PicklyCopy.localized("Not available"),
+                value: formattedGrams(saturatedFat),
                 percent: nil,
                 status: statusForSaturatedFat,
-                isKeyFact: true
-            ),
-            NutritionFact(
+                isKeyFact: false
+            ))
+        }
+
+        if let carbohydrates = nutrition.carbohydrates100g {
+            facts.append(NutritionFact(
+                id: "carbohydrates",
+                title: PicklyCopy.localized("Carbohydrates"),
+                value: formattedGrams(carbohydrates),
+                percent: nil,
+                status: .unknown,
+                isKeyFact: false
+            ))
+        }
+
+        if let fiber = nutrition.fiber100g {
+            facts.append(NutritionFact(
                 id: "fiber",
                 title: PicklyCopy.localized("Fiber"),
-                value: nutrition.fiber100g.map { formattedGrams($0) } ?? PicklyCopy.localized("Not available"),
+                value: formattedGrams(fiber),
                 percent: nil,
                 status: statusForFiber,
                 isKeyFact: false
-            )
-        ]
+            ))
+        }
+
+        if let sodium = nutrition.sodium100g {
+            let milligrams = sodium * 1_000
+            facts.append(NutritionFact(
+                id: "sodium",
+                title: PicklyCopy.localized("Sodium"),
+                value: "\(milligrams.formatted(.number.locale(PicklyCopy.appLocale).precision(.fractionLength(0...1)))) mg",
+                percent: nil,
+                status: sodiumStatus,
+                isKeyFact: false
+            ))
+        }
+
+        if let energyKJ = nutrition.energyKJ100g {
+            facts.append(NutritionFact(
+                id: "energy-kj",
+                title: PicklyCopy.localized("Energy (kJ)"),
+                value: "\(energyKJ.formatted(.number.locale(PicklyCopy.appLocale).precision(.fractionLength(0)))) kJ",
+                percent: nil,
+                status: .unknown,
+                isKeyFact: false
+            ))
+        }
+
+        return facts
     }
 
     var recommendations: [String] {
@@ -279,7 +461,7 @@ extension Product {
     }
 
     func forYouMessages(preferences: UserPreferences) -> [String] {
-        var messages: [String] = []
+        var messages = forYouNotes
 
         if preferences.lowSugar, let sugar = sugarForScoring, sugar >= 12 {
             messages.append(PicklyCopy.localized("May not be the best choice if you're reducing sugar"))
@@ -659,7 +841,7 @@ extension Product {
     }
 
     private func formattedGrams(_ value: Double) -> String {
-        "\(value.formatted(.number.precision(.fractionLength(0...1))))g"
+        "\(value.formatted(.number.locale(PicklyCopy.appLocale).precision(.fractionLength(0...1))))g"
     }
 
     private func uniqueMessages(_ values: [String]) -> [String] {
