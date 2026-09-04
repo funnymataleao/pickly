@@ -7,4 +7,3 @@ xcuserdata/
 
 # Local Firebase/Cloudflare configuration must stay outside source control
 Config/Local.xcconfig
-supabase/.temp/
