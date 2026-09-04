@@ -10,7 +10,6 @@ missing_settings=""
 
 for setting in \
     GOOGLE_IOS_CLIENT_ID \
-    GOOGLE_SERVER_CLIENT_ID \
     GOOGLE_REVERSED_CLIENT_ID \
     FIREBASE_API_KEY \
     FIREBASE_APP_ID \
@@ -36,5 +35,24 @@ esac
 
 if [ -n "$missing_settings" ]; then
     echo "error: Release configuration is missing:${missing_settings}. Configure CI build settings or Config/Local.xcconfig before archiving." >&2
+    exit 1
+fi
+
+firebase_sender_id="$(printenv FIREBASE_GCM_SENDER_ID)"
+google_ios_client_id="$(printenv GOOGLE_IOS_CLIENT_ID)"
+google_reversed_client_id="$(printenv GOOGLE_REVERSED_CLIENT_ID)"
+
+case "$google_ios_client_id" in
+    "$firebase_sender_id"-*.apps.googleusercontent.com)
+        google_ios_client_key="${google_ios_client_id%.apps.googleusercontent.com}"
+        ;;
+    *)
+        echo "error: GOOGLE_IOS_CLIENT_ID does not belong to FIREBASE_GCM_SENDER_ID." >&2
+        exit 1
+        ;;
+esac
+
+if [ "$google_reversed_client_id" != "com.googleusercontent.apps.$google_ios_client_key" ]; then
+    echo "error: GOOGLE_REVERSED_CLIENT_ID does not match GOOGLE_IOS_CLIENT_ID." >&2
     exit 1
 fi

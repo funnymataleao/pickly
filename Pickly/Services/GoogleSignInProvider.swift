@@ -47,8 +47,7 @@ struct GoogleSignInProvider: GoogleSignInProviding {
     func signIn(nonce: String) async throws -> GoogleIdentityTokens {
         guard
             isConfigured,
-            let iOSClientID = GoogleSignInConfiguration.iosClientID,
-            let serverClientID = GoogleSignInConfiguration.serverClientID
+            let iOSClientID = GoogleSignInConfiguration.iosClientID
         else {
             throw GoogleSignInProviderError.missingConfiguration
         }
@@ -58,8 +57,7 @@ struct GoogleSignInProvider: GoogleSignInProviding {
         }
 
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(
-            clientID: iOSClientID,
-            serverClientID: serverClientID
+            clientID: iOSClientID
         )
 
         let result: GIDSignInResult = try await withCheckedThrowingContinuation { continuation in

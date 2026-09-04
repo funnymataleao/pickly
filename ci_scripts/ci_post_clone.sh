@@ -12,7 +12,6 @@ FIREBASE_APP_ID
 FIREBASE_GCM_SENDER_ID
 FIREBASE_PROJECT_ID
 GOOGLE_IOS_CLIENT_ID
-GOOGLE_SERVER_CLIENT_ID
 GOOGLE_REVERSED_CLIENT_ID
 PICKLY_API_BASE_URL
 "
@@ -27,6 +26,25 @@ done
 
 if [ -n "$missing_settings" ]; then
     echo "error: Xcode Cloud is missing required secret environment variables:$missing_settings" >&2
+    exit 1
+fi
+
+firebase_sender_id="$(printenv FIREBASE_GCM_SENDER_ID)"
+google_ios_client_id="$(printenv GOOGLE_IOS_CLIENT_ID)"
+google_reversed_client_id="$(printenv GOOGLE_REVERSED_CLIENT_ID)"
+
+case "$google_ios_client_id" in
+    "$firebase_sender_id"-*.apps.googleusercontent.com)
+        google_ios_client_key="${google_ios_client_id%.apps.googleusercontent.com}"
+        ;;
+    *)
+        echo "error: GOOGLE_IOS_CLIENT_ID does not belong to FIREBASE_GCM_SENDER_ID." >&2
+        exit 1
+        ;;
+esac
+
+if [ "$google_reversed_client_id" != "com.googleusercontent.apps.$google_ios_client_key" ]; then
+    echo "error: GOOGLE_REVERSED_CLIENT_ID does not match GOOGLE_IOS_CLIENT_ID." >&2
     exit 1
 fi
 
@@ -61,7 +79,6 @@ umask 077
         FIREBASE_GCM_SENDER_ID \
         FIREBASE_PROJECT_ID \
         GOOGLE_IOS_CLIENT_ID \
-        GOOGLE_SERVER_CLIENT_ID \
         GOOGLE_REVERSED_CLIENT_ID
     do
         printf '%s = %s\n' "$setting" "$(printenv "$setting")"

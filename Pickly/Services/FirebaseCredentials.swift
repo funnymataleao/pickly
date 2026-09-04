@@ -12,6 +12,7 @@ enum FirebaseCredentials {
 
         let options = FirebaseOptions(googleAppID: appID, gcmSenderID: senderID)
         options.apiKey = apiKey
+        options.clientID = GoogleSignInConfiguration.iosClientID
         options.projectID = projectID
         options.storageBucket = storageBucket
         FirebaseApp.configure(options: options)
@@ -32,15 +33,11 @@ enum FirebaseCredentials {
 
 enum GoogleSignInConfiguration {
     static var isConfigured: Bool {
-        iosClientID != nil && serverClientID != nil
+        iosClientID != nil
     }
 
     static var iosClientID: String? {
         value(for: "GOOGLE_IOS_CLIENT_ID")
-    }
-
-    static var serverClientID: String? {
-        value(for: "GOOGLE_SERVER_CLIENT_ID")
     }
 
     private static func value(for key: String) -> String? {

@@ -54,8 +54,6 @@
 	</array>
 	<key>GOOGLE_IOS_CLIENT_ID</key>
 	<string>$(GOOGLE_IOS_CLIENT_ID)</string>
-	<key>GOOGLE_SERVER_CLIENT_ID</key>
-	<string>$(GOOGLE_SERVER_CLIENT_ID)</string>
 	<key>FIREBASE_API_KEY</key>
 	<string>$(FIREBASE_API_KEY)</string>
 	<key>FIREBASE_APP_ID</key>
